@@ -1,0 +1,11 @@
+{
+  "bus_number": "NA-1234",
+  "route_number": "138",
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_username": "",
+  "mqtt_password": "",
+  "mqtt_topic_base": "ctb/bus",
+  "health_interval_seconds": 30,
+  "device_key": "CTB-B89A2A4BFD2E-567C0010"
+}
