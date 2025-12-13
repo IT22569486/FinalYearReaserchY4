@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Container,
-  Grid,
   Card,
   CardContent,
   Typography,
@@ -53,6 +51,7 @@ function ModernStatCard({ title, value, icon, gradient, trend }) {
         background: gradient,
         color: 'white',
         height: '100%',
+        minHeight: '150px',
         position: 'relative',
         overflow: 'hidden',
         transition: 'all 0.3s ease',
@@ -73,7 +72,7 @@ function ModernStatCard({ title, value, icon, gradient, trend }) {
         },
       }}
     >
-      <CardContent>
+      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <Box display="flex" flexDirection="column" gap={2}>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start">
             <Box>
@@ -87,8 +86,8 @@ function ModernStatCard({ title, value, icon, gradient, trend }) {
             <Avatar
               sx={{
                 bgcolor: 'rgba(255,255,255,0.2)',
-                width: 56,
-                height: 56,
+                width: 64,
+                height: 64,
               }}
             >
               {icon}
@@ -106,7 +105,7 @@ function ModernStatCard({ title, value, icon, gradient, trend }) {
   );
 }
 
-// Modern Device Card with Glass Effect
+// Modern Device Card
 function ModernDeviceCard({ device, onClick }) {
   const isOnline = device.status === 'online';
   const health = device.lastHealth || device;
@@ -139,6 +138,7 @@ function ModernDeviceCard({ device, onClick }) {
         borderColor: isOnline ? 'success.main' : 'error.main',
         position: 'relative',
         overflow: 'hidden',
+        height: '100%',
         transition: 'all 0.3s ease',
         '&:hover': {
           transform: 'translateY(-4px)',
@@ -217,122 +217,114 @@ function ModernDeviceCard({ device, onClick }) {
             <Typography variant="caption" fontWeight="600" color="text.secondary" mb={1} display="block">
               SYSTEM HEALTH
             </Typography>
-            <Grid container spacing={1}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
               {health.cpu_percent !== undefined && (
-                <Grid item xs={6}>
-                  <Box>
-                    <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
-                      <Speed sx={{ fontSize: 14, color: 'primary.main' }} />
-                      <Typography variant="caption" fontWeight="600">
-                        CPU
-                      </Typography>
-                    </Box>
-                    <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 0,
-                          height: '100%',
-                          width: `${getHealthValue(device.system.cpu_percent)}%`,
-                          background: device.system.cpu_percent > 80
-                            ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
-                            : device.system.cpu_percent > 60
-                            ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
-                            : 'linear-gradient(90deg, #28a745, #48c766)',
-                          borderRadius: 3,
-                          transition: 'width 0.5s ease',
-                        }}
-                      />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {health.cpu_percent?.toFixed(0)}%
+                <Box>
+                  <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
+                    <Speed sx={{ fontSize: 14, color: 'primary.main' }} />
+                    <Typography variant="caption" fontWeight="600">
+                      CPU
                     </Typography>
                   </Box>
-                </Grid>
+                  <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        height: '100%',
+                        width: `${getHealthValue(device.system?.cpu_percent || health.cpu_percent)}%`,
+                        background: (device.system?.cpu_percent || health.cpu_percent) > 80
+                          ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
+                          : (device.system?.cpu_percent || health.cpu_percent) > 60
+                          ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
+                          : 'linear-gradient(90deg, #28a745, #48c766)',
+                        borderRadius: 3,
+                        transition: 'width 0.5s ease',
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {health.cpu_percent?.toFixed(0)}%
+                  </Typography>
+                </Box>
               )}
               {health.memory_percent !== undefined && (
-                <Grid item xs={6}>
-                  <Box>
-                    <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
-                      <Memory sx={{ fontSize: 14, color: 'primary.main' }} />
-                      <Typography variant="caption" fontWeight="600">
-                        RAM
-                      </Typography>
-                    </Box>
-                    <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 0,
-                          height: '100%',
-                          width: `${getHealthValue(health.memory_percent)}%`,
-                          background: health.memory_percent > 80
-                            ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
-                            : health.memory_percent > 60
-                            ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
-                            : 'linear-gradient(90deg, #28a745, #48c766)',
-                          borderRadius: 3,
-                          transition: 'width 0.5s ease',
-                        }}
-                      />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {health.memory_percent?.toFixed(0)}%
+                <Box>
+                  <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
+                    <Memory sx={{ fontSize: 14, color: 'primary.main' }} />
+                    <Typography variant="caption" fontWeight="600">
+                      RAM
                     </Typography>
                   </Box>
-                </Grid>
+                  <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        height: '100%',
+                        width: `${getHealthValue(health.memory_percent)}%`,
+                        background: health.memory_percent > 80
+                          ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
+                          : health.memory_percent > 60
+                          ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
+                          : 'linear-gradient(90deg, #28a745, #48c766)',
+                        borderRadius: 3,
+                        transition: 'width 0.5s ease',
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {health.memory_percent?.toFixed(0)}%
+                  </Typography>
+                </Box>
               )}
               {health.disk_percent !== undefined && (
-                <Grid item xs={6}>
-                  <Box>
-                    <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
-                      <Storage sx={{ fontSize: 14, color: 'primary.main' }} />
-                      <Typography variant="caption" fontWeight="600">
-                        Disk
-                      </Typography>
-                    </Box>
-                    <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 0,
-                          height: '100%',
-                          width: `${getHealthValue(health.disk_percent)}%`,
-                          background: health.disk_percent > 90
-                            ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
-                            : health.disk_percent > 70
-                            ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
-                            : 'linear-gradient(90deg, #28a745, #48c766)',
-                          borderRadius: 3,
-                          transition: 'width 0.5s ease',
-                        }}
-                      />
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {health.disk_percent?.toFixed(0)}%
+                <Box>
+                  <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
+                    <Storage sx={{ fontSize: 14, color: 'primary.main' }} />
+                    <Typography variant="caption" fontWeight="600">
+                      Disk
                     </Typography>
                   </Box>
-                </Grid>
+                  <Box sx={{ position: 'relative', height: 6, bgcolor: 'grey.200', borderRadius: 3, overflow: 'hidden' }}>
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        height: '100%',
+                        width: `${getHealthValue(health.disk_percent)}%`,
+                        background: health.disk_percent > 90
+                          ? 'linear-gradient(90deg, #dc3545, #ff6b6b)'
+                          : health.disk_percent > 70
+                          ? 'linear-gradient(90deg, #ffc107, #ffdb4d)'
+                          : 'linear-gradient(90deg, #28a745, #48c766)',
+                        borderRadius: 3,
+                        transition: 'width 0.5s ease',
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {health.disk_percent?.toFixed(0)}%
+                  </Typography>
+                </Box>
               )}
               {health.temperature !== undefined && (
-                <Grid item xs={6}>
-                  <Box>
-                    <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
-                      <Thermostat sx={{ fontSize: 14, color: 'primary.main' }} />
-                      <Typography variant="caption" fontWeight="600">
-                        Temp
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" fontWeight="600" color="primary.main">
-                      {health.temperature?.toFixed(1)}°C
+                <Box>
+                  <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
+                    <Thermostat sx={{ fontSize: 14, color: 'primary.main' }} />
+                    <Typography variant="caption" fontWeight="600">
+                      Temp
                     </Typography>
                   </Box>
-                </Grid>
+                  <Typography variant="body2" fontWeight="600" color="primary.main">
+                    {health.temperature?.toFixed(1)}°C
+                  </Typography>
+                </Box>
               )}
-            </Grid>
+            </Box>
           </Box>
         )}
 
@@ -460,9 +452,6 @@ function Dashboard() {
         const deviceList = Array.isArray(devicesRes.data) ? devicesRes.data : devicesRes.data.devices || [];
         const violationList = Array.isArray(violationsRes.data) ? violationsRes.data : violationsRes.data.violations || [];
 
-        console.log('Devices loaded:', deviceList.length);
-        console.log('Violations loaded:', violationList.length);
-
         setDevices(deviceList);
         setViolations(violationList);
         setError(null);
@@ -486,7 +475,6 @@ function Dashboard() {
     socketService.connect();
 
     const unsubHealth = socketService.onDeviceHealthUpdate((data) => {
-      console.log('Health update:', data);
       setDevices((prev) =>
         prev.map((d) =>
           d.deviceKey === data.deviceKey
@@ -497,19 +485,16 @@ function Dashboard() {
     });
 
     const unsubStatus = socketService.onDeviceStatusUpdate((data) => {
-      console.log('Status update:', data);
       setDevices((prev) =>
         prev.map((d) => (d.deviceKey === data.deviceKey ? { ...d, status: data.status, lastSeen: new Date() } : d))
       );
     });
 
     const unsubViolation = socketService.onNewViolation((data) => {
-      console.log('New violation:', data);
       setViolations((prev) => [data, ...prev].slice(0, 20));
     });
 
     const unsubDeviceUpdate = socketService.onDeviceUpdate((data) => {
-      console.log('Device update:', data);
       setDevices((prev) => {
         const exists = prev.find((d) => d.deviceKey === data.deviceKey);
         if (exists) {
@@ -585,7 +570,7 @@ function Dashboard() {
           borderBottom: '3px solid rgba(255,255,255,0.1)',
         }}
       >
-        <Toolbar sx={{ py: 1 }}>
+        <Toolbar sx={{ py: 1, px: { xs: 2, sm: 3, md: 5, lg: 6 } }}>
           <Box display="flex" alignItems="center" gap={1.5}>
             <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 48, height: 48 }}>
               <DirectionsBus />
@@ -653,182 +638,203 @@ function Dashboard() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Main Content - Using CSS Grid for Full Width */}
+      <Box sx={{ px: { xs: 2, sm: 3, md: 5, lg: 6 }, py: 4 }}>
         {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
+          <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        {/* Modern Stats Grid */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <ModernStatCard
-              title="Total Devices"
-              value={stats.totalDevices}
-              icon={<Devices sx={{ fontSize: 28 }} />}
-              gradient="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-              trend="+2 this week"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <ModernStatCard
-              title="Online Now"
-              value={stats.onlineDevices}
-              icon={<CheckCircle sx={{ fontSize: 28 }} />}
-              gradient="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
-              trend="94% uptime"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <ModernStatCard
-              title="Offline"
-              value={stats.offlineDevices}
-              icon={<WifiOff sx={{ fontSize: 28 }} />}
-              gradient="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <ModernStatCard
-              title="Violations"
-              value={stats.totalViolations}
-              icon={<Warning sx={{ fontSize: 28 }} />}
-              gradient="linear-gradient(135deg, #fa709a 0%, #fee140 100%)"
-              trend="-5% today"
-            />
-          </Grid>
-        </Grid>
+        {/* Stats Grid - CSS Grid Layout */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, 1fr)',
+              md: 'repeat(4, 1fr)',
+            },
+            gap: 3,
+            mb: 4,
+          }}
+        >
+          <ModernStatCard
+            title="Total Devices"
+            value={stats.totalDevices}
+            icon={<Devices sx={{ fontSize: 32 }} />}
+            gradient="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+            trend="+2 this week"
+          />
+          <ModernStatCard
+            title="Online Now"
+            value={stats.onlineDevices}
+            icon={<CheckCircle sx={{ fontSize: 32 }} />}
+            gradient="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+            trend="94% uptime"
+          />
+          <ModernStatCard
+            title="Offline"
+            value={stats.offlineDevices}
+            icon={<WifiOff sx={{ fontSize: 32 }} />}
+            gradient="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
+          />
+          <ModernStatCard
+            title="Violations"
+            value={stats.totalViolations}
+            icon={<Warning sx={{ fontSize: 32 }} />}
+            gradient="linear-gradient(135deg, #fa709a 0%, #fee140 100%)"
+            trend="-5% today"
+          />
+        </Box>
 
-        {/* Main Content Grid */}
-        <Grid container spacing={3}>
+        {/* Main Content - CSS Grid Layout */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              lg: '1fr 350px',
+            },
+            gap: 3,
+          }}
+        >
           {/* Devices Section */}
-          <Grid item xs={12} lg={8}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 3,
-                borderRadius: 3,
-                background: 'white',
-                border: '1px solid',
-                borderColor: 'grey.200',
-              }}
-            >
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Box>
-                  <Typography variant="h5" fontWeight="800" gutterBottom>
-                    Connected Devices
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Monitor all active buses in real-time
-                  </Typography>
-                </Box>
-                <Chip
-                  label={`${devices.length} Total`}
-                  color="primary"
-                  sx={{ fontWeight: 700 }}
-                />
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              borderRadius: 3,
+              background: 'white',
+              border: '1px solid',
+              borderColor: 'grey.200',
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Box>
+                <Typography variant="h5" fontWeight="800" gutterBottom>
+                  Connected Devices
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Monitor all active buses in real-time
+                </Typography>
               </Box>
+              <Chip
+                label={`${devices.length} Total`}
+                color="primary"
+                sx={{ fontWeight: 700 }}
+              />
+            </Box>
 
-              {devices.length === 0 ? (
-                <Box textAlign="center" py={8}>
-                  <Avatar
-                    sx={{
-                      width: 80,
-                      height: 80,
-                      bgcolor: 'grey.100',
-                      mx: 'auto',
-                      mb: 2,
-                    }}
-                  >
-                    <DirectionsBus sx={{ fontSize: 40, color: 'grey.400' }} />
-                  </Avatar>
-                  <Typography variant="h6" color="text.secondary" gutterBottom>
-                    No Devices Found
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={3}>
-                    Start by registering your first device
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<Add />}
-                    onClick={() => setRegisterOpen(true)}
-                  >
-                    Register Device
-                  </Button>
-                </Box>
-              ) : (
-                <Grid container spacing={2}>
-                  {devices.map((device) => (
-                    <Grid item xs={12} md={6} key={device.deviceKey || device.id}>
-                      <ModernDeviceCard
-                        device={device}
-                        onClick={() => navigate(`/device/${device.deviceKey}`)}
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
-              )}
-            </Paper>
-          </Grid>
+            {devices.length === 0 ? (
+              <Box textAlign="center" py={8}>
+                <Avatar
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    bgcolor: 'grey.100',
+                    mx: 'auto',
+                    mb: 2,
+                  }}
+                >
+                  <DirectionsBus sx={{ fontSize: 40, color: 'grey.400' }} />
+                </Avatar>
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No Devices Found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={3}>
+                  Start by registering your first device
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => setRegisterOpen(true)}
+                >
+                  Register Device
+                </Button>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, 1fr)',
+                    xl: 'repeat(3, 1fr)',
+                  },
+                  gap: 3,
+                }}
+              >
+                {devices.map((device) => (
+                  <ModernDeviceCard
+                    key={device.deviceKey || device.id}
+                    device={device}
+                    onClick={() => navigate(`/device/${device.deviceKey}`)}
+                  />
+                ))}
+              </Box>
+            )}
+          </Paper>
 
           {/* Violations Section */}
-          <Grid item xs={12} lg={4}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 3,
-                borderRadius: 3,
-                background: 'white',
-                border: '1px solid',
-                borderColor: 'grey.200',
-                height: '100%',
-              }}
-            >
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Box>
-                  <Typography variant="h5" fontWeight="800" gutterBottom>
-                    Violations
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Latest rule violations
-                  </Typography>
-                </Box>
-                <Badge badgeContent={violations.length} color="error" max={99}>
-                  <Notifications color="action" />
-                </Badge>
-              </Box>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              borderRadius: 3,
+              background: 'white',
+              border: '1px solid',
+              borderColor: 'grey.200',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <Typography variant="h5" fontWeight={800} gutterBottom>
+                  Violations
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Latest rule violations
+                </Typography>
+              </div>
+              <Badge badgeContent={violations.length} color="error" max={99}>
+                <Notifications color="action" />
+              </Badge>
+            </div>
 
-              {violations.length === 0 ? (
-                <Box textAlign="center" py={8}>
-                  <Avatar
-                    sx={{
-                      width: 60,
-                      height: 60,
-                      bgcolor: 'success.light',
-                      mx: 'auto',
-                      mb: 2,
-                    }}
-                  >
-                    <CheckCircle sx={{ fontSize: 32, color: 'success.main' }} />
-                  </Avatar>
-                  <Typography variant="body1" color="text.secondary" gutterBottom>
-                    All Clear!
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    No violations detected
-                  </Typography>
-                </Box>
-              ) : (
-                <Box sx={{ maxHeight: 600, overflow: 'auto' }}>
-                  {violations.map((violation, index) => (
-                    <ModernViolationItem key={violation.id || index} violation={violation} />
-                  ))}
-                </Box>
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
-      </Container>
+            {violations.length === 0 ? (
+              <div style={{ textAlign: 'center', paddingTop: 40, paddingBottom: 40, flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <Avatar
+                  sx={{
+                    width: 60,
+                    height: 60,
+                    bgcolor: 'success.light',
+                    mx: 'auto',
+                    mb: 2,
+                  }}
+                >
+                  <CheckCircle sx={{ fontSize: 32, color: 'success.main' }} />
+                </Avatar>
+                <Typography variant="body1" color="text.secondary" gutterBottom>
+                  All Clear!
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  No violations detected
+                </Typography>
+              </div>
+            ) : (
+              <div style={{ flexGrow: 1, maxHeight: 600, overflow: 'auto' }}>
+                {violations.map((violation, index) => (
+                  <div key={violation.id || index} style={{ marginBottom: 12 }}>
+                    <ModernViolationItem violation={violation} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Paper>
+        </Box>
+      </Box>
 
       {/* Register Dialog */}
       <Dialog open={registerOpen} onClose={() => setRegisterOpen(false)} maxWidth="sm" fullWidth>
