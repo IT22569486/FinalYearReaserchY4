@@ -99,8 +99,9 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.infoContainer}>
+        <InfoRow icon="person-outline" label="User ID" value={passenger.id || passenger._id || 'N/A'} />
         <InfoRow icon="call-outline" label="Phone Number" value={passenger.phoneNumber || 'N/A'} />
-        <InfoRow icon="card-outline" label="Member Since" value={passenger.createdAt && passenger.createdAt._seconds ? new Date(passenger.createdAt._seconds * 1000).toLocaleDateString() : 'N/A'} />
+        <InfoRow icon="calendar-outline" label="Member Since" value={passenger.createdAt ? new Date(passenger.createdAt).toLocaleDateString() : 'N/A'} />
       </View>
 
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
