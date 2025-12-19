@@ -20,7 +20,6 @@ from typing import Dict, List, Optional, Tuple
 from enum import Enum
 import time
 
-
 class TrafficLevel(Enum):
     """Traffic density classification."""
     NONE = "NO_TRAFFIC"
