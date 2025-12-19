@@ -1,0 +1,11 @@
+.env
+node_modules/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Firebase service account key (NEVER commit this!)
+serviceAccountKey.json
+firebase-service-account.json
+*-firebase-adminsdk-*.json

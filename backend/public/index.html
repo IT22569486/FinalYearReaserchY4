@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTB Device Monitor - Sri Lanka Bus Monitoring System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --ctb-primary: #1a5f2a;
+            --ctb-secondary: #2d8f42;
+            --ctb-accent: #f4a020;
+            --ctb-danger: #dc3545;
+            --ctb-success: #28a745;
+        }
+        
+        body {
+            background-color: #f5f6fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, var(--ctb-primary), var(--ctb-secondary));
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.4rem;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: none;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card .icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+        }
+        
+        .stat-card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            line-height: 1;
+        }
+        
+        .stat-card .label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        .device-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-left: 4px solid #6c757d;
+            transition: all 0.2s;
+        }
+        
+        .device-card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .device-card.online {
+            border-left-color: var(--ctb-success);
+        }
+        
+        .device-card.offline {
+            border-left-color: var(--ctb-danger);
+        }
+        
+        .status-badge {
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-badge.online {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-badge.offline {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-badge.unknown {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+        
+        .violation-item {
+            background: white;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid var(--ctb-danger);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .violation-item.reviewed {
+            border-left-color: #6c757d;
+            opacity: 0.7;
+        }
+        
+        .health-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: #e9ecef;
+            overflow: hidden;
+        }
+        
+        .health-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .health-bar .fill.good { background: var(--ctb-success); }
+        .health-bar .fill.warning { background: var(--ctb-accent); }
+        .health-bar .fill.danger { background: var(--ctb-danger); }
+        
+        .section-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .last-update {
+            font-size: 0.75rem;
+            color: #999;
+        }
+        
+        .device-key {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            background: #f8f9fa;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .live-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--ctb-success);
+            animation: pulse 2s infinite;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, var(--ctb-primary), var(--ctb-secondary));
+            color: white;
+        }
+        
+        .btn-ctb {
+            background: var(--ctb-primary);
+            color: white;
+            border: none;
+        }
+        
+        .btn-ctb:hover {
+            background: var(--ctb-secondary);
+            color: white;
+        }
+        
+        .capability-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-right: 0.25rem;
+        }
+        
+        .capability-badge.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .capability-badge.inactive {
+            background: #e2e3e5;
+            color: #6c757d;
+        }
+        
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        
+        .toast-notification {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-bus-front me-2"></i>
+                CTB Device Monitor
+            </a>
+            <div class="d-flex align-items-center text-white">
+                <span class="live-indicator"></span>
+                <span class="me-3">Live</span>
+                <span id="current-time" class="me-3"></span>
+                <button class="btn btn-outline-light btn-sm" onclick="showRegisterModal()">
+                    <i class="bi bi-plus-lg"></i> Register Device
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid px-4">
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="value text-primary" id="stat-total">0</div>
+                            <div class="label">Total Devices</div>
+                        </div>
+                        <div class="icon bg-primary bg-opacity-10 text-primary">
+                            <i class="bi bi-cpu"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="value text-success" id="stat-online">0</div>
+                            <div class="label">Online</div>
+                        </div>
+                        <div class="icon bg-success bg-opacity-10 text-success">
+                            <i class="bi bi-wifi"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="value text-danger" id="stat-offline">0</div>
+                            <div class="label">Offline</div>
+                        </div>
+                        <div class="icon bg-danger bg-opacity-10 text-danger">
+                            <i class="bi bi-wifi-off"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="value text-warning" id="stat-violations">0</div>
+                            <div class="label">Violations Today</div>
+                        </div>
+                        <div class="icon bg-warning bg-opacity-10 text-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Devices List -->
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white border-0 py-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="section-title mb-0">
+                                <i class="bi bi-grid-3x3-gap text-primary"></i>
+                                Bus Devices
+                            </h5>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm" id="filter-status" style="width: auto;">
+                                    <option value="">All Status</option>
+                                    <option value="online">Online</option>
+                                    <option value="offline">Offline</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadDevices()">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body" id="devices-container">
+                        <div class="text-center py-5 text-muted">
+                            <div class="spinner-border mb-3" role="status"></div>
+                            <p>Loading devices...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Violations -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h5 class="section-title mb-0">
+                            <i class="bi bi-exclamation-circle text-danger"></i>
+                            Recent Violations
+                        </h5>
+                    </div>
+                    <div class="card-body" id="violations-container" style="max-height: 500px; overflow-y: auto;">
+                        <div class="text-center py-3 text-muted">
+                            Loading violations...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Device Modal -->
+    <div class="modal fade" id="registerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle me-2"></i>Register New Device
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="register-form">
+                        <div class="mb-3">
+                            <label class="form-label">Bus Number <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="reg-bus-number" placeholder="e.g., NA-1234" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Route Number</label>
+                            <input type="text" class="form-control" id="reg-route" placeholder="e.g., 138">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Depot</label>
+                            <input type="text" class="form-control" id="reg-depot" placeholder="e.g., Colombo Central">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" id="reg-notes" rows="2"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-ctb" onclick="registerDevice()">
+                        <i class="bi bi-check-lg me-1"></i>Register
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Details Modal -->
+    <div class="modal fade" id="deviceModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cpu me-2"></i>Device Details
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="device-details-content">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        // API Base URL
+        const API_BASE = '';
+        
+        // Socket.IO connection
+        const socket = io();
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateTime();
+            setInterval(updateTime, 1000);
+            loadStats();
+            loadDevices();
+            loadViolations();
+            setupSocketListeners();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadStats();
+                loadDevices();
+            }, 30000);
+        });
+        
+        // Update current time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleString('en-LK', {
+                timeZone: 'Asia/Colombo',
+                dateStyle: 'medium',
+                timeStyle: 'medium'
+            });
+        }
+        
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/devices/stats`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('stat-total').textContent = data.data.totalDevices;
+                    document.getElementById('stat-online').textContent = data.data.onlineDevices;
+                    document.getElementById('stat-offline').textContent = data.data.offlineDevices;
+                    document.getElementById('stat-violations').textContent = data.data.totalViolationsToday;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Load devices
+        async function loadDevices() {
+            try {
+                const status = document.getElementById('filter-status').value;
+                const url = status 
+                    ? `${API_BASE}/api/devices?status=${status}`
+                    : `${API_BASE}/api/devices`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const container = document.getElementById('devices-container');
+                
+                if (!data.success || data.data.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox display-4"></i>
+                            <p class="mt-3">No devices found</p>
+                            <button class="btn btn-ctb btn-sm" onclick="showRegisterModal()">
+                                Register First Device
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.data.map(device => `
+                    <div class="device-card ${device.status}" id="device-${device.deviceKey}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <h6 class="mb-0 fw-bold">${device.busNumber}</h6>
+                                    <span class="status-badge ${device.status}">${device.status}</span>
+                                    <button class="btn btn-sm btn-link p-0 ms-2" onclick="refreshDevice('${device.deviceKey}')" title="Refresh this device">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
+                                <div class="device-key mb-2">${device.deviceKey}</div>
+                                <div class="text-muted small">
+                                    <i class="bi bi-signpost me-1"></i>Route: ${device.routeNumber || 'N/A'}
+                                    <span class="mx-2">|</span>
+                                    <i class="bi bi-building me-1"></i>${device.depot || 'N/A'}
+                                </div>
+                                ${device.capabilities ? `
+                                    <div class="mt-2">
+                                        <span class="capability-badge ${device.capabilities.cameraActive ? 'active' : 'inactive'}">
+                                            <i class="bi bi-camera"></i> Camera
+                                        </span>
+                                        <span class="capability-badge ${device.capabilities.laneDetection ? 'active' : 'inactive'}">
+                                            <i class="bi bi-bezier"></i> Lane
+                                        </span>
+                                        <span class="capability-badge ${device.capabilities.objectDetection ? 'active' : 'inactive'}">
+                                            <i class="bi bi-bounding-box"></i> Object
+                                        </span>
+                                        <span class="capability-badge ${device.capabilities.depthEstimation ? 'active' : 'inactive'}">
+                                            <i class="bi bi-layers"></i> Depth
+                                        </span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="text-end">
+                                <div class="last-update mb-2">
+                                    <i class="bi bi-clock-history me-1"></i>${device.lastSeenFormatted || 'Never seen'}
+                                </div>
+                                ${device.lastHealthUpdate ? `
+                                    <div class="small text-muted mb-1">
+                                        Health: ${formatTimeAgo(device.lastHealthUpdate)}
+                                    </div>
+                                ` : ''}
+                                ${device.latestHealth ? `
+                                    <div class="small text-muted mb-1">
+                                        <i class="bi bi-cpu"></i> ${device.latestHealth.cpuPercent?.toFixed(0) || 0}%
+                                        <i class="bi bi-memory ms-2"></i> ${device.latestHealth.memoryPercent?.toFixed(0) || 0}%
+                                        ${device.latestHealth.temperature ? `<i class="bi bi-thermometer ms-2"></i> ${device.latestHealth.temperature?.toFixed(0)}°C` : ''}
+                                    </div>
+                                ` : ''}
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="showDeviceDetails('${device.deviceKey}')">
+                                        <i class="bi bi-eye"></i> Details
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="refreshDevice('${device.deviceKey}')">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading devices:', error);
+                document.getElementById('devices-container').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Error loading devices. Please try again.
+                    </div>
+                `;
+            }
+        }
+        
+        // Load violations
+        async function loadViolations() {
+            try {
+                const response = await fetch(`${API_BASE}/api/violations/recent?limit=15`);
+                const data = await response.json();
+                
+                const container = document.getElementById('violations-container');
+                
+                if (!data.success || data.data.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-check-circle display-4 text-success"></i>
+                            <p class="mt-2">No recent violations</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.data.map(v => `
+                    <div class="violation-item ${v.reviewed ? 'reviewed' : ''}">
+                        <div>
+                            <div class="fw-bold small">${v.busNumber || 'Unknown'}</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">
+                                ${formatViolationType(v.violationType)}
+                            </div>
+                            <div class="text-muted" style="font-size: 0.7rem;">
+                                ${new Date(v.timestamp).toLocaleString('en-LK')}
+                            </div>
+                        </div>
+                        <span class="badge bg-${v.reviewed ? 'secondary' : 'danger'}">
+                            ${v.reviewed ? 'Reviewed' : 'New'}
+                        </span>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading violations:', error);
+            }
+        }
+        
+        // Format violation type
+        function formatViolationType(type) {
+            const types = {
+                'lane_departure': '🚧 Lane Departure',
+                'speeding': '⚡ Speeding',
+                'unsafe_distance': '📏 Unsafe Distance',
+                'other': '⚠️ Other'
+            };
+            return types[type] || type;
+        }
+        
+        // Format time ago
+        function formatTimeAgo(dateString) {
+            if (!dateString) return 'Never';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSec = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHour = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHour / 24);
+            
+            if (diffDay > 0) return `${diffDay}d ${diffHour % 24}h ago`;
+            if (diffHour > 0) return `${diffHour}h ${diffMin % 60}m ago`;
+            if (diffMin > 0) return `${diffMin}m ago`;
+            return 'Just now';
+        }
+        
+        // Refresh single device
+        async function refreshDevice(deviceKey) {
+            const card = document.getElementById(`device-${deviceKey}`);
+            if (card) {
+                card.style.opacity = '0.5';
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/devices/${deviceKey}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Reload all devices to update the card
+                    await loadDevices();
+                    showToast(`Device ${data.data.busNumber} refreshed`, 'success');
+                } else {
+                    showToast(`Failed to refresh device`, 'danger');
+                }
+            } catch (error) {
+                console.error('Error refreshing device:', error);
+                showToast('Error refreshing device', 'danger');
+            }
+            
+            if (card) {
+                card.style.opacity = '1';
+            }
+        }
+        
+        // Setup Socket.IO listeners for real-time updates
+        function setupSocketListeners() {
+            socket.on('device:status', (data) => {
+                console.log('Device status update:', data);
+                loadStats();
+                loadDevices();
+                showToast(`Bus ${data.busNumber} is now ${data.status}`, data.status === 'online' ? 'success' : 'danger');
+            });
+            
+            socket.on('device:health', (data) => {
+                console.log('Device health update:', data);
+                // Update specific device card if visible
+                const card = document.getElementById(`device-${data.deviceKey}`);
+                if (card) {
+                    loadDevices();
+                }
+            });
+            
+            socket.on('violation:new', (data) => {
+                console.log('New violation:', data);
+                loadStats();
+                loadViolations();
+                showToast(`🚨 ${formatViolationType(data.violationType)} - Bus ${data.busNumber}`, 'danger');
+            });
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            
+            const iconClass = {
+                'success': 'bi-check-circle text-success',
+                'danger': 'bi-exclamation-circle text-danger',
+                'warning': 'bi-exclamation-triangle text-warning',
+                'info': 'bi-info-circle text-primary'
+            }[type] || 'bi-info-circle text-primary';
+            
+            toast.innerHTML = `
+                <i class="bi ${iconClass} fs-4"></i>
+                <span>${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+        
+        // Show register modal
+        function showRegisterModal() {
+            new bootstrap.Modal(document.getElementById('registerModal')).show();
+        }
+        
+        // Register new device
+        async function registerDevice() {
+            const busNumber = document.getElementById('reg-bus-number').value.trim();
+            const routeNumber = document.getElementById('reg-route').value.trim();
+            const depot = document.getElementById('reg-depot').value.trim();
+            const notes = document.getElementById('reg-notes').value.trim();
+            
+            if (!busNumber) {
+                alert('Bus number is required');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/devices/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ busNumber, routeNumber, depot, notes })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('registerModal')).hide();
+                    document.getElementById('register-form').reset();
+                    
+                    showToast(`Device registered! Key: ${data.data.deviceKey}`, 'success');
+                    loadStats();
+                    loadDevices();
+                    
+                    // Show the device key
+                    alert(`Device registered successfully!\n\nDevice Key: ${data.data.deviceKey}\n\nUse this key in the device configuration.`);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error registering device:', error);
+                alert('Failed to register device');
+            }
+        }
+        
+        // Show device details
+        async function showDeviceDetails(deviceKey) {
+            const modal = new bootstrap.Modal(document.getElementById('deviceModal'));
+            const content = document.getElementById('device-details-content');
+            
+            content.innerHTML = '<div class="text-center py-4"><div class="spinner-border"></div></div>';
+            modal.show();
+            
+            try {
+                const [deviceRes, healthRes, violationsRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/devices/${deviceKey}`),
+                    fetch(`${API_BASE}/api/devices/${deviceKey}/health-history?hours=24`),
+                    fetch(`${API_BASE}/api/devices/${deviceKey}/violations?days=7`)
+                ]);
+                
+                const device = (await deviceRes.json()).data;
+                const healthHistory = (await healthRes.json()).data || [];
+                const violations = (await violationsRes.json()).data || [];
+                
+                content.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-info-circle me-2"></i>Device Information
+                            </h6>
+                            <table class="table table-sm">
+                                <tr><td class="text-muted">Device Key</td><td><code>${device.deviceKey}</code></td></tr>
+                                <tr><td class="text-muted">Bus Number</td><td><strong>${device.busNumber}</strong></td></tr>
+                                <tr><td class="text-muted">Route</td><td>${device.routeNumber || 'N/A'}</td></tr>
+                                <tr><td class="text-muted">Depot</td><td>${device.depot || 'N/A'}</td></tr>
+                                <tr><td class="text-muted">Status</td><td><span class="status-badge ${device.status}">${device.status}</span></td></tr>
+                                <tr><td class="text-muted">Registered</td><td>${new Date(device.registeredAt).toLocaleString()}</td></tr>
+                                <tr><td class="text-muted">Last Seen</td><td>${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : 'Never'}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-heart-pulse me-2"></i>Latest Health
+                            </h6>
+                            ${device.latestHealth ? `
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small>CPU</small>
+                                        <small>${device.latestHealth.cpuPercent?.toFixed(1)}%</small>
+                                    </div>
+                                    <div class="health-bar">
+                                        <div class="fill ${getHealthClass(device.latestHealth.cpuPercent)}" 
+                                             style="width: ${device.latestHealth.cpuPercent}%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small>Memory</small>
+                                        <small>${device.latestHealth.memoryPercent?.toFixed(1)}%</small>
+                                    </div>
+                                    <div class="health-bar">
+                                        <div class="fill ${getHealthClass(device.latestHealth.memoryPercent)}" 
+                                             style="width: ${device.latestHealth.memoryPercent}%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small>Disk</small>
+                                        <small>${device.latestHealth.diskPercent?.toFixed(1)}%</small>
+                                    </div>
+                                    <div class="health-bar">
+                                        <div class="fill ${getHealthClass(device.latestHealth.diskPercent)}" 
+                                             style="width: ${device.latestHealth.diskPercent}%"></div>
+                                    </div>
+                                </div>
+                                ${device.latestHealth.temperature ? `
+                                    <div class="small text-muted">
+                                        <i class="bi bi-thermometer-half"></i> Temperature: ${device.latestHealth.temperature.toFixed(1)}°C
+                                    </div>
+                                ` : ''}
+                            ` : '<p class="text-muted">No health data available</p>'}
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-activity me-2"></i>Statistics
+                            </h6>
+                            <div class="d-flex gap-4">
+                                <div class="text-center">
+                                    <div class="fs-3 fw-bold text-primary">${device.statistics?.healthUpdatesReceived || 0}</div>
+                                    <small class="text-muted">Health Updates</small>
+                                </div>
+                                <div class="text-center">
+                                    <div class="fs-3 fw-bold text-danger">${device.statistics?.totalViolations || 0}</div>
+                                    <small class="text-muted">Violations</small>
+                                </div>
+                                <div class="text-center">
+                                    <div class="fs-3 fw-bold text-warning">${device.statistics?.laneViolations || 0}</div>
+                                    <small class="text-muted">Lane Violations</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="border-bottom pb-2 mb-3">
+                                <i class="bi bi-cpu me-2"></i>System Info
+                            </h6>
+                            ${device.systemInfo ? `
+                                <p class="small mb-1"><strong>Platform:</strong> ${device.systemInfo.platform} ${device.systemInfo.platformRelease || ''}</p>
+                                <p class="small mb-0"><strong>Python:</strong> ${device.systemInfo.pythonVersion || 'N/A'}</p>
+                            ` : '<p class="text-muted small">No system info available</p>'}
+                        </div>
+                    </div>
+                    
+                    ${violations.length > 0 ? `
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-exclamation-triangle me-2"></i>Recent Violations (Last 7 Days)
+                        </h6>
+                        <div style="max-height: 200px; overflow-y: auto;">
+                            ${violations.slice(0, 10).map(v => `
+                                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                                    <div>
+                                        <span class="badge bg-danger me-2">${formatViolationType(v.violationType)}</span>
+                                        <small class="text-muted">${new Date(v.timestamp).toLocaleString()}</small>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                
+            } catch (error) {
+                console.error('Error loading device details:', error);
+                content.innerHTML = '<div class="alert alert-danger">Error loading device details</div>';
+            }
+        }
+        
+        // Get health bar class based on percentage
+        function getHealthClass(value) {
+            if (value < 60) return 'good';
+            if (value < 85) return 'warning';
+            return 'danger';
+        }
+        
+        // Filter change handler
+        document.getElementById('filter-status').addEventListener('change', loadDevices);
+    </script>
+</body>
+</html>
