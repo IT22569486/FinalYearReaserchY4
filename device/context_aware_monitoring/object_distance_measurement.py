@@ -40,6 +40,22 @@ except ImportError:
     print("WARNING: Device health monitor not available. Install: pip install paho-mqtt psutil")
     HEALTH_MONITOR_AVAILABLE = False
 
+# Import Lane Memory Tracker for temporal lane tracking
+try:
+    from lane_memory_tracker import LaneMemoryTracker
+    LANE_MEMORY_AVAILABLE = True
+except ImportError:
+    print("WARNING: Lane memory tracker not available")
+    LANE_MEMORY_AVAILABLE = False
+
+# Import Driver Behavior Analyzer for CTB bus monitoring
+try:
+    from driver_behavior_analyzer import DriverBehaviorAnalyzer
+    BEHAVIOR_ANALYZER_AVAILABLE = True
+except ImportError:
+    print("WARNING: Driver behavior analyzer not available")
+    BEHAVIOR_ANALYZER_AVAILABLE = False
+
 
 def get_palette(n):
     """Return distinct BGR colors for visualization"""
@@ -145,6 +161,11 @@ class ObjectProximityAnalyzer:
         """
         Analyze object proximity by checking depth map brightness
         
+        IMPROVED: 
+        - Uses BOTTOM HALF of bounding box (where object touches road)
+        - Uses MEDIAN instead of mean (more robust to outliers)
+        - Compares to ground reference depth
+        
         Logic:
         - Light/Bright pixels (high values) = Close object
         - Dark pixels (low values) = Far object  
@@ -156,39 +177,58 @@ class ObjectProximityAnalyzer:
             
         Returns:
             proximity: "Close" / "Medium" / "Far"
-            avg_brightness: Average brightness value (0-255)
+            avg_brightness: Median brightness value (0-255)
         """
         x1, y1, x2, y2 = map(int, bbox)
+        frame_height, frame_width = depth_map_normalized.shape[:2]
         
-        # Extract region inside bounding box
+        # Clamp to frame bounds
         y1 = max(0, y1)
-        y2 = min(depth_map_normalized.shape[0], y2)
+        y2 = min(frame_height, y2)
         x1 = max(0, x1)
-        x2 = min(depth_map_normalized.shape[1], x2)
+        x2 = min(frame_width, x2)
         
         if y1 >= y2 or x1 >= x2:
             return "Unknown", 0
         
-        # Get depth region inside box
-        depth_region = depth_map_normalized[y1:y2, x1:x2]
+        # IMPROVEMENT 1: Use only BOTTOM HALF of bounding box
+        # This is where the object touches the road - most reliable for distance
+        box_height = y2 - y1
+        bottom_start = y1 + int(box_height * 0.5)  # Start from middle
         
-        # Calculate average brightness (0-255)
-        # Bright = Close, Dark = Far
-        avg_brightness = float(np.mean(depth_region))
+        # Get depth region from bottom half of box
+        depth_region = depth_map_normalized[bottom_start:y2, x1:x2]
         
-        # More granular brightness levels (0-255, bright=close)
-        if avg_brightness > 100:
+        if depth_region.size == 0:
+            return "Unknown", 0
+        
+        # IMPROVEMENT 2: Use MEDIAN instead of mean (robust to sky pixels and outliers)
+        median_brightness = float(np.median(depth_region))
+        
+        # IMPROVEMENT 3: Get ground reference depth (bottom center of frame)
+        ground_y_start = int(frame_height * 0.85)
+        ground_x_start = int(frame_width * 0.4)
+        ground_x_end = int(frame_width * 0.6)
+        ground_region = depth_map_normalized[ground_y_start:frame_height, ground_x_start:ground_x_end]
+        ground_brightness = float(np.median(ground_region)) if ground_region.size > 0 else 100
+        
+        # Compare object depth to ground depth
+        # If object brightness is close to ground brightness, it's on the road (close)
+        depth_diff = abs(median_brightness - ground_brightness)
+        
+        # Classify based on brightness AND depth difference from ground
+        if median_brightness > 90 or depth_diff < 20:
             proximity = "Very Close"
-        elif avg_brightness > 70:
+        elif median_brightness > 65:
             proximity = "Close"
-        elif avg_brightness > 50:
+        elif median_brightness > 45:
             proximity = "Near"
-        elif avg_brightness > 30:
+        elif median_brightness > 25:
             proximity = "Medium"
         else:
             proximity = "Far"
         
-        return proximity, avg_brightness
+        return proximity, median_brightness
 
 
 def main():
@@ -258,7 +298,7 @@ def main():
     SOLID_LANE_IDS = [4, 5, 6, 7, 8]  # solid lanes for warnings
     
     if use_lane == 'y':
-        default_lane_model = str(MODELS_DIR / 'bestV8.pt')
+        default_lane_model = str(MODELS_DIR / 'rlmdFilteredModelNov9.pt')
         lane_model_path = input(f"Enter lane detection model path (default: {default_lane_model}): ").strip()
         if not lane_model_path:
             lane_model_path = default_lane_model
@@ -276,6 +316,12 @@ def main():
             print(f"Lane model not found: {lane_model_path}")
             lane_model = None
     
+    # Initialize Lane Memory Tracker
+    lane_tracker = None
+    if lane_model is not None and LANE_MEMORY_AVAILABLE:
+        lane_tracker = LaneMemoryTracker(max_history=30, decay_rate=0.95, smoothing_factor=0.3)
+        print("✅ Lane Memory Tracker initialized")
+    
     # Audio warnings for lanes
     warning_sound = None
     if lane_model is not None:
@@ -292,6 +338,25 @@ def main():
     last_warning_time = 0
     warning_cooldown = 2.0
     proximity_threshold = 100
+    
+    # Initialize Driver Behavior Analyzer
+    behavior_analyzer = None
+    vehicle_speed = 0
+    if BEHAVIOR_ANALYZER_AVAILABLE:
+        print("\n[Driver Behavior Analysis]")
+        enable_behavior = input("Enable driver behavior analysis? [Y/n]: ").strip().lower()
+        if enable_behavior != 'n':
+            behavior_analyzer = DriverBehaviorAnalyzer()
+            
+            # Get vehicle speed for simulation
+            speed_input = input("Enter simulated vehicle speed (km/h, default: 40): ").strip()
+            try:
+                vehicle_speed = float(speed_input) if speed_input else 40
+            except ValueError:
+                vehicle_speed = 40
+            
+            behavior_analyzer.set_speed(vehicle_speed)
+            print(f"   Vehicle speed set to: {vehicle_speed} km/h")
     
     # Get video input
     print("\n[3] Video Input")
@@ -340,6 +405,10 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (output_width, height))
     
+    # Fixed display size for consistent preview
+    DISPLAY_WIDTH = 1280
+    DISPLAY_HEIGHT = 360
+    
     frame_count = 0
     start_time = time.time()
     
@@ -357,6 +426,8 @@ def main():
             
             # Run lane detection if enabled
             lane_warning = False
+            detected_lane_masks = []  # Collect lane info for memory tracker
+            
             if lane_model is not None:
                 lane_results = lane_model(frame, conf=0.4, imgsz=640)
                 lane_res = lane_results[0]
@@ -374,10 +445,71 @@ def main():
                 masks = lane_res.masks.data
                 boxes = lane_res.boxes
                 
-                center_x = width // 2
-                center_y = int(height * 0.85)
+                # Vehicle position: for left-side driving country, vehicle drives on left side of road
+                # Position the reference dot at 70% from left (right portion of frame represents vehicle position)
+                center_x = int(width * 0.5)
+                center_y = int(height * 0.8)
                 
-                # Draw lanes
+                # Collect lane information for wrong-side detection
+                left_lanes = []   # Lanes on left side of vehicle dot
+                right_lanes = []  # Lanes on right side of vehicle dot
+                
+                # First pass: categorize lanes by position relative to vehicle
+                for i in range(len(masks)):
+                    try:
+                        mask = masks[i].cpu().numpy()
+                        mask_resized = cv2.resize(mask, (width, height))
+                    except:
+                        continue
+                    
+                    mask_bool = mask_resized > 0.5
+                    
+                    try:
+                        cls = int(boxes.cls[i].cpu().numpy())
+                        conf = float(boxes.conf[i].cpu().numpy())
+                    except:
+                        cls = 0
+                        conf = 0.0
+                    
+                    ys, xs = np.where(mask_bool)
+                    if len(xs) > 0:
+                        lane_center_x = int(np.mean(xs))
+                        lane_info = {
+                            'mask_bool': mask_bool,
+                            'cls': cls,
+                            'conf': conf,
+                            'center_x': lane_center_x,
+                            'xs': xs,
+                            'ys': ys,
+                            'index': i
+                        }
+                        
+                        # Add to detected lanes for memory tracker
+                        detected_lane_masks.append(lane_info)
+                        
+                        if lane_center_x < center_x:  # Left side of vehicle
+                            left_lanes.append(lane_info)
+                        else:  # Right side of vehicle
+                            right_lanes.append(lane_info)
+                
+                # Update Lane Memory Tracker with detected lanes
+                if lane_tracker is not None:
+                    tracked_lanes = lane_tracker.update(detected_lane_masks, frame.shape, center_x)
+                    
+                    # Draw lane segmentation overlay (filled area between lanes)
+                    seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
+                    if seg_overlay is not None:
+                        # Apply segmentation overlay with transparency based on confidence
+                        alpha = 0.30 * seg_confidence  # Increased visibility
+                        annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
+                    
+                    # Draw road structure prediction (STRAIGHT/CURVE)
+                    annotated = lane_tracker.draw_road_structure(annotated)
+                
+                # Detect wrong-side driving: if 2 or more lines on left side
+                wrong_side_driving = len(left_lanes) >= 2
+                
+                # Second pass: draw lanes and check warnings
                 for i in range(len(masks)):
                     try:
                         mask = masks[i].cpu().numpy()
@@ -406,29 +538,84 @@ def main():
                     thickness = 3 if cls in SOLID_LANE_IDS else 2
                     cv2.drawContours(annotated, contours, -1, color, thickness)
                     
-                    # Check solid lane proximity (right side only)
+                    # Draw lane type label
+                    if len(contours) > 0 and lane_names:
+                        # Find topmost point of the largest contour for label placement
+                        largest_contour = max(contours, key=cv2.contourArea)
+                        if len(largest_contour) > 0:
+                            topmost = tuple(largest_contour[largest_contour[:, :, 1].argmin()][0])
+                            lane_type = lane_names.get(cls, f'Lane {cls}')
+                            label_text = f"{lane_type} ({conf:.2f})"
+                            
+                            # Draw label with background
+                            (text_w, text_h), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                            label_x = max(5, topmost[0] - text_w // 2)
+                            label_y = max(text_h + 10, topmost[1] - 10)
+                            
+                            cv2.rectangle(annotated, 
+                                        (label_x - 5, label_y - text_h - 5),
+                                        (label_x + text_w + 5, label_y + baseline + 5),
+                                        (0, 0, 0), -1)
+                            cv2.putText(annotated, label_text, (label_x, label_y),
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                    
+                    # Lane departure warning logic for left-side driving country
+                    # Check if vehicle dot crosses any solid lane [4,5,6,7,8]
                     if cls in SOLID_LANE_IDS:
                         ys, xs = np.where(mask_bool)
                         if len(xs) > 0:
                             lane_center_x = int(np.mean(xs))
-                            if lane_center_x > center_x:  # Right side
-                                distances = np.sqrt((xs - center_x)**2 + (ys - center_y)**2)
-                                min_distance = float(np.min(distances))
+                            
+                            # Calculate distance from vehicle dot to lane
+                            distances = np.sqrt((xs - center_x)**2 + (ys - center_y)**2)
+                            min_distance = float(np.min(distances))
+                            
+                            # Check if vehicle dot is crossing/touching the lane mask
+                            vehicle_touching_lane = mask_bool[center_y, center_x] if (0 <= center_y < height and 0 <= center_x < width) else False
+                            
+                            should_warn = False
+                            warning_type = ""
+                            
+                            # Case 1: Normal driving - warn if crossing middle lane (left side solid line)
+                            # In left-side driving, the middle lane is on the LEFT of vehicle
+                            if lane_center_x < center_x:  # Lane is on left side (middle lane for left-driving)
+                                if vehicle_touching_lane or min_distance < proximity_threshold:
+                                    should_warn = True
+                                    warning_type = "LEFT_LANE_DEPARTURE"
+                            
+                            # Case 2: Crossing right-side solid lane
+                            elif lane_center_x > center_x:  # Lane is on right side
+                                if vehicle_touching_lane or min_distance < proximity_threshold:
+                                    should_warn = True
+                                    warning_type = "RIGHT_LANE_DEPARTURE"
+                            
+                            # Case 3: Wrong-side driving warning (2 lines on left = wrong side)
+                            if wrong_side_driving and lane_center_x < center_x:
+                                if vehicle_touching_lane or min_distance < proximity_threshold:
+                                    should_warn = True
+                                    warning_type = "WRONG_SIDE_LANE_CROSSING"
+                            
+                            if should_warn:
+                                lane_warning = True
+                                current_time = time.time()
+                                if warning_sound and (current_time - last_warning_time) > warning_cooldown:
+                                    warning_sound.play()
+                                    last_warning_time = current_time
                                 
-                                if min_distance < proximity_threshold:
-                                    lane_warning = True
-                                    current_time = time.time()
-                                    if warning_sound and (current_time - last_warning_time) > warning_cooldown:
-                                        warning_sound.play()
-                                        last_warning_time = current_time
-                                    
-                                    # Report lane violation to CTB system
-                                    if health_monitor:
-                                        health_monitor.send_violation('lane_departure', {
-                                            'lane_type': lane_names.get(cls, 'unknown') if lane_names else 'solid',
-                                            'distance': min_distance,
-                                            'frame': frame_count
-                                        })
+                                # Report lane violation to CTB system
+                                if health_monitor:
+                                    health_monitor.send_violation('lane_departure', {
+                                        'lane_type': lane_names.get(cls, 'unknown') if lane_names else 'solid',
+                                        'warning_type': warning_type,
+                                        'wrong_side': wrong_side_driving,
+                                        'distance': min_distance,
+                                        'frame': frame_count
+                                    })
+                
+                # Display wrong-side driving warning
+                if wrong_side_driving:
+                    cv2.putText(annotated, "WARNING: WRONG SIDE DRIVING!", (width//2 - 180, 80),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 
                 # Draw vehicle position dot
                 dot_color = (0, 0, 255) if lane_warning else (0, 255, 0)
@@ -445,7 +632,37 @@ def main():
                     cv2.putText(annotated, "LANE DEPARTURE WARNING", (width//2 - 150, 50),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
+            # Handle case when lane model exists but no masks detected - use memory
+            elif lane_model is not None and lane_tracker is not None:
+                center_x = int(width * 0.5)
+                center_y = int(height * 0.8)
+                
+                # Update tracker with empty detections (will use memory)
+                tracked_lanes = lane_tracker.update([], frame.shape, center_x)
+                
+                # Draw tracked lanes from memory if available
+                if tracked_lanes:
+                    seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
+                    if seg_overlay is not None:
+                        alpha = 0.25 * seg_confidence  # Slightly dimmer for memory
+                        annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
+                    
+                    # Draw road structure prediction
+                    annotated = lane_tracker.draw_road_structure(annotated)
+                    
+                    # Show memory indicator
+                    cv2.putText(annotated, "LANE MEMORY ACTIVE", (10, 60),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+                
+                # Draw vehicle position dot
+                cv2.circle(annotated, (center_x, center_y), 10, (0, 0, 0), -1)
+                cv2.circle(annotated, (center_x, center_y), 8, (0, 255, 0), -1)
+                cv2.putText(annotated, "VEHICLE", (center_x - 35, center_y - 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
             # Draw object detection with proximity analysis
+            detected_objects = []  # Collect objects for behavior analyzer
+            
             if depth_map is not None and depth_colored is not None and obj_res.boxes is not None:
                 boxes = obj_res.boxes
                 
@@ -465,6 +682,17 @@ def main():
                     
                     # Analyze proximity by checking depth map brightness in box
                     proximity, avg_brightness = proximity_analyzer.analyze_proximity(depth_gray, bbox)
+                    
+                    # Collect object info for behavior analyzer
+                    if behavior_analyzer is not None:
+                        detected_objects.append({
+                            'bbox': [x1, y1, x2, y2],
+                            'class': obj_name,
+                            'cls_id': cls,
+                            'conf': conf,
+                            'brightness': avg_brightness,
+                            'proximity': proximity
+                        })
                     
                     # Draw bounding box with color based on proximity
                     # Red = Close (bright in depth map)
@@ -510,6 +738,31 @@ def main():
             cv2.putText(annotated, "OBJECT DETECTION + PROXIMITY", (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
+            # Run driver behavior analysis
+            if behavior_analyzer is not None:
+                # Get lane polygon from lane tracker for in-lane detection
+                lane_polygon = None
+                if lane_tracker is not None:
+                    # Build lane polygon from left and right lane points
+                    left_pts = lane_tracker.left_lane_points
+                    right_pts = lane_tracker.right_lane_points
+                    
+                    if left_pts is not None and right_pts is not None:
+                        # Create polygon: left points (bottom to top) + right points reversed (top to bottom)
+                        lane_polygon = np.vstack([left_pts, right_pts[::-1]])
+                
+                # Count objects in our driving lane
+                in_lane_count = behavior_analyzer.count_objects_in_lane(detected_objects, lane_polygon)
+                
+                # Analyze traffic level
+                behavior_analyzer.analyze_traffic(in_lane_count)
+                
+                # Check for violations
+                violation, message = behavior_analyzer.check_violations()
+                
+                # Draw behavior overlay
+                annotated = behavior_analyzer.draw_overlay(annotated, lane_polygon)
+            
             if depth_colored is not None:
                 cv2.putText(depth_colored, "DEPTH MAP", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -526,7 +779,10 @@ def main():
             
             # Write and display
             out.write(combined_frame)
-            cv2.imshow('Object Distance Measurement', combined_frame)
+            
+            # Resize to fixed display size for consistent preview
+            display_frame = cv2.resize(combined_frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+            cv2.imshow('Object Distance Measurement', display_frame)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 print("\nInterrupted by user")
