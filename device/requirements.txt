@@ -1,0 +1,7 @@
+ultralytics>=8.0
+opencv-python>=4.5.5
+numpy
+pygame>=2.0.0
+onnxruntime>=1.15.0
+paho-mqtt>=1.6.0
+psutil>=5.9.0
