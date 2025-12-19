@@ -43,6 +43,211 @@ String location_name = "Unknown";
 String road_condition = "Dry";
 
 
+// CONFIGURATION PAGE HTML
+String htmlPage()
+{
+  return R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Bus Configuration</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 450px;
+      width: 100%;
+    }
+    h2 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 24px;
+    }
+    .form-section {
+      margin-bottom: 25px;
+      padding-bottom: 25px;
+      border-bottom: 1px solid #eee;
+    }
+    .form-section:last-of-type {
+      border-bottom: none;
+      margin-bottom: 15px;
+    }
+    .section-title {
+      color: #667eea;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      color: #555;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.3s;
+      outline: none;
+    }
+    input:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    input::placeholder {
+      color: #aaa;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 10px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    .info-text {
+      font-size: 12px;
+      color: #888;
+      margin-top: 5px;
+    }
+    .status-box {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+    .status-label {
+      color: #666;
+      font-size: 13px;
+    }
+    .status-value {
+      color: #333;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .speed-display {
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .speed-value {
+      font-size: 48px;
+      font-weight: 800;
+      color: white;
+    }
+    .speed-unit {
+      font-size: 18px;
+      color: rgba(255,255,255,0.8);
+    }
+    .speed-label {
+      color: rgba(255,255,255,0.9);
+      font-size: 14px;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Bus Configuration</h2>
+    
+    <div class="speed-display">
+      <div class="speed-value">)rawliteral" + String(safe_speed, 1) + R"rawliteral(<span class="speed-unit"> km/h</span></div>
+      <div class="speed-label">Safe Speed</div>
+    </div>
+    
+    <div class="status-box">
+      <div class="status-item">
+        <span class="status-label">Location:</span>
+        <span class="status-value">)rawliteral" + location_name + R"rawliteral(</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Road:</span>
+        <span class="status-value">)rawliteral" + road_condition + R"rawliteral(</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Vehicle:</span>
+        <span class="status-value">)rawliteral" + vehicle_id + R"rawliteral(</span>
+      </div>
+    </div>
+    
+    <form action="/save" method="POST">
+      <div class="form-section">
+        <div class="section-title">WiFi Settings</div>
+        <div class="form-group">
+          <label for="ssid">Network Name (SSID)</label>
+          <input type="text" id="ssid" name="ssid" placeholder="Enter WiFi SSID" required>
+        </div>
+        <div class="form-group">
+          <label for="pass">WiFi Password</label>
+          <input type="password" id="pass" name="pass" placeholder="Enter WiFi password" required>
+          <div class="info-text">Make sure credentials are correct</div>
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <div class="section-title">Bus Information</div>
+        <div class="form-group">
+          <label for="vehicle">Vehicle ID</label>
+          <input type="text" id="vehicle" name="vehicle" placeholder="e.g., BUS_001" required>
+        </div>
+        <div class="form-group">
+          <label for="route">Route ID</label>
+          <input type="text" id="route" name="route" placeholder="e.g., 177_Kaduwela_Kollupitiya" required>
+        </div>
+      </div>
+      
+      <button type="submit">Save & Connect</button>
+    </form>
+  </div>
+</body>
+</html>
+)rawliteral";
+}
 
 void handleRoot()
 {
@@ -59,6 +264,43 @@ void handleSave()
   prefs.putString("route", server.arg("route"));
 
   prefs.end();
+
+  String response = R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          font-family: 'Segoe UI', sans-serif;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          color: white;
+          text-align: center;
+        }
+        .container {
+          background: white;
+          padding: 40px;
+          border-radius: 15px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+          color: #333;
+        }
+        h2 { color: #10b981; margin-bottom: 15px; }
+        p { color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h2>Configuration Saved!</h2>
+        <p>ESP32 will restart and connect to WiFi.</p>
+        <p style="margin-top: 20px; font-size: 14px;">Please wait...</p>
+      </div>
+    </body>
+    </html>
+  )rawliteral";
 
   server.send(200, "text/html", response);
   
