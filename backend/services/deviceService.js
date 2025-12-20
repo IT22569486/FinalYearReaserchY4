@@ -16,6 +16,9 @@ async function getAllDevices() {
  * Get device by device key
  */
 async function getDeviceByKey(deviceKey) {
+  // Guard against undefined/null deviceKey
+  if (!deviceKey) return null;
+
   const snapshot = await devicesCollection.where("deviceKey", "==", deviceKey).limit(1).get();
   if (snapshot.empty) return null;
   return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
@@ -25,15 +28,27 @@ async function getDeviceByKey(deviceKey) {
  * Create or update device (auto-registration)
  */
 async function upsertDevice(deviceData) {
-  const { deviceKey, busNumber, routeNumber, ...rest } = deviceData;
-  
+  let { deviceKey, busNumber, routeNumber, ...rest } = deviceData;
+
+  // Filter out undefined values from rest object
+  const filteredRest = Object.fromEntries(
+    Object.entries(rest).filter(([_, value]) => value !== undefined)
+  );
+
+  // Generate deviceKey if not provided (e.g., from dashboard registration)
+  if (!deviceKey) {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    deviceKey = `CTB-DASHBOARD-${timestamp}-${random}`;
+  }
+
   // Check if device exists
   const existing = await getDeviceByKey(deviceKey);
-  
+
   if (existing) {
     // Update existing device
     await devicesCollection.doc(existing.id).update({
-      ...rest,
+      ...filteredRest,
       busNumber: busNumber || existing.busNumber,
       routeNumber: routeNumber || existing.routeNumber,
       lastSeen: admin.firestore.FieldValue.serverTimestamp(),
@@ -47,11 +62,11 @@ async function upsertDevice(deviceData) {
       deviceKey,
       busNumber: busNumber || 'UNKNOWN',
       routeNumber: routeNumber || 'UNKNOWN',
-      status: 'online',
+      status: 'offline',
       lastSeen: admin.firestore.FieldValue.serverTimestamp(),
       registeredAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      ...rest
+      ...filteredRest
     };
     const docRef = await devicesCollection.add(newDevice);
     const doc = await docRef.get();
@@ -65,12 +80,12 @@ async function upsertDevice(deviceData) {
 async function updateDeviceStatus(deviceKey, status) {
   const device = await getDeviceByKey(deviceKey);
   if (!device) return null;
-  
+
   await devicesCollection.doc(device.id).update({
     status,
     lastSeen: admin.firestore.FieldValue.serverTimestamp()
   });
-  
+
   const updated = await devicesCollection.doc(device.id).get();
   return { id: device.id, ...updated.data() };
 }
@@ -88,14 +103,14 @@ async function updateDeviceHealth(deviceKey, healthData) {
       status: 'online'
     });
   }
-  
+
   // Update device with health data
   await devicesCollection.doc(device.id).update({
     ...healthData,
     status: 'online',
     lastSeen: admin.firestore.FieldValue.serverTimestamp()
   });
-  
+
   // Log health data
   await healthLogsCollection.add({
     deviceKey,
@@ -103,7 +118,7 @@ async function updateDeviceHealth(deviceKey, healthData) {
     ...healthData,
     timestamp: admin.firestore.FieldValue.serverTimestamp()
   });
-  
+
   const updated = await devicesCollection.doc(device.id).get();
   return { id: device.id, ...updated.data() };
 }
@@ -117,7 +132,7 @@ async function getDeviceHealthLogs(deviceKey, limit = 100) {
     .where("deviceKey", "==", deviceKey)
     .limit(limit * 2) // Get more to sort in memory
     .get();
-  
+
   // Sort in memory and limit
   const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   return logs
@@ -135,7 +150,7 @@ async function getDeviceHealthLogs(deviceKey, limit = 100) {
 async function deleteDevice(deviceKey) {
   const device = await getDeviceByKey(deviceKey);
   if (!device) return null;
-  
+
   await devicesCollection.doc(device.id).delete();
   return true;
 }

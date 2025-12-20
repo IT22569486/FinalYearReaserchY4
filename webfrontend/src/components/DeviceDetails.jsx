@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
-  Container,
-  Grid,
   Card,
   CardContent,
   Typography,
@@ -211,14 +209,14 @@ function DeviceDetails() {
             <Typography variant="h6">Device Details</Typography>
           </Toolbar>
         </AppBar>
-        <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ px: { xs: 2, sm: 3, md: 5, lg: 6 }, py: 4 }}>
           <Alert severity="error">
             {error || 'Device not found'}
             <Button onClick={() => navigate('/')} sx={{ ml: 2 }}>
               Back to Dashboard
             </Button>
           </Alert>
-        </Container>
+        </Box>
       </Box>
     );
   }
@@ -253,77 +251,78 @@ function DeviceDetails() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Box sx={{ px: { xs: 2, sm: 3, md: 5, lg: 6 }, py: 4 }}>
         {/* Device Info Header */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Grid container spacing={3} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Box
-                    sx={{
-                      width: 80,
-                      height: 80,
-                      borderRadius: 2,
-                      bgcolor: isOnline ? 'success.light' : 'error.light',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <DirectionsBus sx={{ fontSize: 48, color: isOnline ? 'success.dark' : 'error.dark' }} />
-                  </Box>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' },
+                gap: 3,
+                alignItems: 'center',
+              }}
+            >
+              <Box display="flex" alignItems="center" gap={2}>
+                <Box
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 2,
+                    bgcolor: isOnline ? 'success.light' : 'error.light',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <DirectionsBus sx={{ fontSize: 48, color: isOnline ? 'success.dark' : 'error.dark' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" fontWeight="bold">
+                    {device.busNumber || 'Unknown Bus'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                    {deviceKey}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Route color="primary" />
                   <Box>
-                    <Typography variant="h5" fontWeight="bold">
-                      {device.busNumber || 'Unknown Bus'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                      {deviceKey}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Route</Typography>
+                    <Typography variant="body1" fontWeight="bold">{device.routeNumber || 'N/A'}</Typography>
                   </Box>
                 </Box>
-              </Grid>
-              <Grid item xs={12} md={8}>
-                <Grid container spacing={2}>
-                  <Grid item xs={6} sm={3}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Route color="primary" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Route</Typography>
-                        <Typography variant="body1" fontWeight="bold">{device.routeNumber || 'N/A'}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <AccessTime color="primary" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Last Seen</Typography>
-                        <Typography variant="body2">{formatTime(device.lastSeen)}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <CheckCircle color="success" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Registered</Typography>
-                        <Typography variant="body2">{formatTime(device.registeredAt || device.createdAt)}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Warning color="warning" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Violations</Typography>
-                        <Typography variant="body1" fontWeight="bold" color="warning.main">{violations.length}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Grid>
-            </Grid>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <AccessTime color="primary" />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Last Seen</Typography>
+                    <Typography variant="body2">{formatTime(device.lastSeen)}</Typography>
+                  </Box>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <CheckCircle color="success" />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Registered</Typography>
+                    <Typography variant="body2">{formatTime(device.registeredAt || device.createdAt)}</Typography>
+                  </Box>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Warning color="warning" />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Violations</Typography>
+                    <Typography variant="body1" fontWeight="bold" color="warning.main">{violations.length}</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
           </CardContent>
         </Card>
 
@@ -338,137 +337,169 @@ function DeviceDetails() {
 
         {/* Overview Tab */}
         <TabPanel value={tabValue} index={0}>
-          <Grid container spacing={3}>
-            {/* Health Metrics */}
-            <Grid item xs={6} sm={3}>
-              <HealthMetricCard
-                icon={<Speed color="primary" />}
-                label="CPU Usage"
-                value={device.system.cpu_percent?.toFixed(1)}
-                unit="%"
-                percent={device.system.cpu_percent}
-                color={getHealthColor(device.system.cpu_percent)}
-              />
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <HealthMetricCard
-                icon={<Memory color="primary" />}
-                label="Memory Usage"
-                value={device.system.memory_percent?.toFixed(1)}
-                unit="%"
-                percent={device.system.memory_percent}
-                color={getHealthColor(device.system.memory_percent)}
-              />
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <HealthMetricCard
-                icon={<Storage color="primary" />}
-                label="Disk Usage"
-                value={device.system.disk_percent?.toFixed(1)}
-                unit="%"
-                percent={device.system.disk_percent}
-                color={getHealthColor(device.system.disk_percent, 80, 95)}
-              />
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <HealthMetricCard
-                icon={<Thermostat color="primary" />}
-                label="Temperature"
-                value={device.system.temperature?.toFixed(1)}
-                unit="°C"
-                percent={device.system.temperature ? (device.system.temperature / 100) * 100 : undefined}
-                color={getHealthColor(device.system.temperature, 60, 80)}
-              />
-            </Grid>
+          {/* Health Metrics - CSS Grid Layout */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, 1fr)',
+                sm: 'repeat(4, 1fr)',
+                lg: 'repeat(5, 1fr)',
+              },
+              gap: 3,
+              mb: 4,
+            }}
+          >
+            <HealthMetricCard
+              icon={<Speed color="primary" />}
+              label="CPU Usage"
+              value={device.system?.cpu_percent?.toFixed(1)}
+              unit="%"
+              percent={device.system?.cpu_percent}
+              color={getHealthColor(device.system?.cpu_percent)}
+            />
+            <HealthMetricCard
+              icon={<Memory color="primary" />}
+              label="Memory Usage"
+              value={device.system?.memory_percent?.toFixed(1)}
+              unit="%"
+              percent={device.system?.memory_percent}
+              color={getHealthColor(device.system?.memory_percent)}
+            />
+            <HealthMetricCard
+              icon={<Storage color="primary" />}
+              label="Disk Usage"
+              value={device.system?.disk_percent?.toFixed(1)}
+              unit="%"
+              percent={device.system?.disk_percent}
+              color={getHealthColor(device.system?.disk_percent, 80, 95)}
+            />
 
             {/* Additional Metrics */}
             {health.battery_percent !== undefined && (
-              <Grid item xs={6} sm={3}>
-                <HealthMetricCard
-                  icon={<Battery80 color="primary" />}
-                  label="Battery"
-                  value={device.system.battery_percent?.toFixed(0)}
-                  unit="%"
-                  percent={device.system.battery_percent}
-                  color={getHealthColor(100 - device.system.battery_percent)}
-                />
-              </Grid>
+              <HealthMetricCard
+                icon={<Battery80 color="primary" />}
+                label="Battery"
+                value={device.system?.battery_percent?.toFixed(0)}
+                unit="%"
+                percent={device.system?.battery_percent}
+                color={getHealthColor(100 - device.system?.battery_percent)}
+              />
             )}
             {health.network_latency !== undefined && (
-              <Grid item xs={6} sm={3}>
-                <HealthMetricCard
-                  icon={<SignalCellular4Bar color="primary" />}
-                  label="Network Latency"
-                  value={device.system.network_latency?.toFixed(0)}
-                  unit="ms"
-                  color={getHealthColor(device.system.network_latency, 100, 500)}
-                />
-              </Grid>
+              <HealthMetricCard
+                icon={<SignalCellular4Bar color="primary" />}
+                label="Network Latency"
+                value={device.system?.network_latency?.toFixed(0)}
+                unit="ms"
+                color={getHealthColor(device.system?.network_latency, 100, 500)}
+              />
             )}
 
-            {/* Chart */}
-            {healthLogs.length > 0 && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" mb={2}>
-                      Resource Usage Trend
-                    </Typography>
-                    <Box sx={{ height: 300 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={formatChartData()}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="time" />
-                          <YAxis domain={[0, 100]} />
-                          <Tooltip />
-                          <Legend />
-                          <Line type="monotone" dataKey="cpu" stroke="#1a5f2a" name="CPU %" strokeWidth={2} />
-                          <Line type="monotone" dataKey="memory" stroke="#f4a020" name="Memory %" strokeWidth={2} />
-                          <Line type="monotone" dataKey="disk" stroke="#dc3545" name="Disk %" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
 
-            {/* Component Status */}
+
+            {/* Component Status - Full Width */}
             {health.components && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" mb={2}>
-                      Component Status
-                    </Typography>
-                    <Grid container spacing={2}>
-                      {Object.entries(health.components).map(([name, status]) => (
-                        <Grid item xs={6} sm={4} md={3} key={name}>
-                          <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {status === 'running' ? (
-                              <CheckCircle color="success" />
-                            ) : status === 'error' ? (
-                              <ErrorIcon color="error" />
-                            ) : (
-                              <FiberManualRecord color="disabled" />
-                            )}
-                            <Box>
-                              <Typography variant="body2" fontWeight="bold">
-                                {name.replace(/_/g, ' ')}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {status}
-                              </Typography>
-                            </Box>
-                          </Paper>
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </CardContent>
-                </Card>
-              </Grid>
+              <Card sx={{ gridColumn: { xs: 'span 2', sm: 'span 4', lg: 'span 5' } }}>
+                <CardContent>
+                  <Typography variant="h6" mb={2}>
+                    Component Status
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: {
+                        xs: 'repeat(2, 1fr)',
+                        sm: 'repeat(3, 1fr)',
+                        md: 'repeat(4, 1fr)',
+                      },
+                      gap: 2,
+                    }}
+                  >
+                    {Object.entries(health.components).map(([name, status]) => (
+                      <Paper key={name} sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {status === 'running' ? (
+                          <CheckCircle color="success" />
+                        ) : status === 'error' ? (
+                          <ErrorIcon color="error" />
+                        ) : (
+                          <FiberManualRecord color="disabled" />
+                        )}
+                        <Box>
+                          <Typography variant="body2" fontWeight="bold">
+                            {name.replace(/_/g, ' ')}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {status}
+                          </Typography>
+                        </Box>
+                      </Paper>
+                    ))}
+                  </Box>
+                </CardContent>
+              </Card>
             )}
-          </Grid>
+
+            {/* Recent Violations - Full Width */}
+            <Card sx={{ gridColumn: { xs: 'span 3', sm: 'span 4', lg: 'span 5' } }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="h6">
+                    Recent Violations
+                  </Typography>
+                  <Button
+                    size="small"
+                    endIcon={<Warning />}
+                    onClick={() => setTabValue(2)}
+                  >
+                    View All ({violations.length})
+                  </Button>
+                </Box>
+                {violations.length === 0 ? (
+                  <Box textAlign="center" py={3}>
+                    <CheckCircle sx={{ fontSize: 50, color: 'success.light', mb: 1 }} />
+                    <Typography color="text.secondary">No violations recorded</Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {violations.slice(0, 5).map((violation, index) => (
+                      <Paper
+                        key={violation.id || index}
+                        sx={{
+                          p: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          borderLeft: 4,
+                          borderColor: violation.severity?.toLowerCase() === 'high' ? 'error.main' :
+                            violation.severity?.toLowerCase() === 'low' ? 'success.main' : 'warning.main',
+                        }}
+                      >
+                        <Warning color={violation.severity?.toLowerCase() === 'high' ? 'error' : 'warning'} />
+                        <Box flex={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {violation.type?.replace(/_/g, ' ').toUpperCase()}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {violation.description || 'No description'}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={violation.severity || 'MEDIUM'}
+                          color={violation.severity?.toLowerCase() === 'high' ? 'error' :
+                            violation.severity?.toLowerCase() === 'low' ? 'success' : 'warning'}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {formatTime(violation.createdAt)}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Box>
         </TabPanel>
 
         {/* Health History Tab */}
@@ -489,7 +520,6 @@ function DeviceDetails() {
                         <TableCell align="right">CPU %</TableCell>
                         <TableCell align="right">Memory %</TableCell>
                         <TableCell align="right">Disk %</TableCell>
-                        <TableCell align="right">Temperature</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -511,7 +541,6 @@ function DeviceDetails() {
                             />
                           </TableCell>
                           <TableCell align="right">{log.disk_percent?.toFixed(1) || '--'}%</TableCell>
-                          <TableCell align="right">{log.temperature?.toFixed(1) || '--'}°C</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -539,6 +568,7 @@ function DeviceDetails() {
                         <TableCell>Type</TableCell>
                         <TableCell>Severity</TableCell>
                         <TableCell>Description</TableCell>
+                        <TableCell>Details</TableCell>
                         <TableCell>Time</TableCell>
                         <TableCell>Status</TableCell>
                       </TableRow>
@@ -560,15 +590,28 @@ function DeviceDetails() {
                               label={violation.severity || 'MEDIUM'}
                               color={
                                 violation.severity?.toLowerCase() === 'high' ||
-                                violation.severity?.toLowerCase() === 'critical'
+                                  violation.severity?.toLowerCase() === 'critical'
                                   ? 'error'
                                   : violation.severity?.toLowerCase() === 'low'
-                                  ? 'success'
-                                  : 'warning'
+                                    ? 'success'
+                                    : 'warning'
                               }
                             />
                           </TableCell>
                           <TableCell>{violation.description || 'No description'}</TableCell>
+                          <TableCell>
+                            <Box sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                              {violation.details?.speed_kmh !== undefined && (
+                                <Box>Speed: {violation.details.speed_kmh} km/h</Box>
+                              )}
+                              {violation.details?.traffic_level && (
+                                <Box>Traffic: {violation.details.traffic_level}</Box>
+                              )}
+                              {violation.details?.duration_seconds && (
+                                <Box>Duration: {violation.details.duration_seconds}s</Box>
+                              )}
+                            </Box>
+                          </TableCell>
                           <TableCell>{formatTime(violation.timestamp || violation.createdAt)}</TableCell>
                           <TableCell>
                             <Chip
@@ -587,7 +630,7 @@ function DeviceDetails() {
             </CardContent>
           </Card>
         </TabPanel>
-      </Container>
+      </Box>
     </Box>
   );
 }
