@@ -33,11 +33,19 @@ except ImportError:
     sys.exit(1)
 
 # Import Device Health Monitor for CTB IoT system
+# Need to add parent directory to path since device_health_monitor.py is in parent folder
+import sys
+from pathlib import Path
+DEVICE_DIR = Path(__file__).parent.parent  # device/ folder
+if str(DEVICE_DIR) not in sys.path:
+    sys.path.insert(0, str(DEVICE_DIR))
+
 try:
     from device_health_monitor import get_health_monitor
     HEALTH_MONITOR_AVAILABLE = True
-except ImportError:
-    print("WARNING: Device health monitor not available. Install: pip install paho-mqtt psutil")
+    print("✅ Device health monitor imported successfully")
+except ImportError as e:
+    print(f"WARNING: Device health monitor not available: {e}")
     HEALTH_MONITOR_AVAILABLE = False
 
 # Import Lane Memory Tracker for temporal lane tracking
@@ -239,15 +247,15 @@ def main():
     print("CTB Bus Rule Violation Detection System")
     print("=" * 60)
     
-    # Initialize Health Monitor for CTB IoT
+    # Initialize Health Monitor for violation reporting
+    # Each process now has unique MQTT client ID (device_key + process_id)
     health_monitor = None
+    device_config_path = str(DEVICE_DIR / 'device_config.json')  # Use parent folder config
     if HEALTH_MONITOR_AVAILABLE:
-        print("\n[0] CTB Device Health Monitor")
-        enable_health = input("Enable CTB health monitoring? [Y/n]: ").strip().lower()
-        if enable_health != 'n':
-            health_monitor = get_health_monitor()
+        health_monitor = get_health_monitor(config_path=device_config_path)
+        if not health_monitor.running:
             health_monitor.start()
-            print(f"   Device Key: {health_monitor.device_key}")
+        print(f"✅ Violation reporter ready (Device: {health_monitor.device_key})")
     
     # Get object detection model
     print("\n[1] Object Detection Model")
@@ -339,6 +347,14 @@ def main():
     warning_cooldown = 2.0
     proximity_threshold = 100
     
+    # Get health_monitor for violation reporting
+    health_monitor = None
+    if HEALTH_MONITOR_AVAILABLE:
+        # Use config from parent device/ folder to avoid creating duplicate device
+        config_path = str(DEVICE_DIR / 'device_config.json')
+        health_monitor = get_health_monitor(config_path=config_path)
+        print(f"✅ Health monitor available for violation reporting (config: {config_path})")
+    
     # Initialize Driver Behavior Analyzer
     behavior_analyzer = None
     vehicle_speed = 0
@@ -346,7 +362,7 @@ def main():
         print("\n[Driver Behavior Analysis]")
         enable_behavior = input("Enable driver behavior analysis? [Y/n]: ").strip().lower()
         if enable_behavior != 'n':
-            behavior_analyzer = DriverBehaviorAnalyzer()
+            behavior_analyzer = DriverBehaviorAnalyzer(health_monitor=health_monitor)
             
             # Get vehicle speed for simulation
             speed_input = input("Enter simulated vehicle speed (km/h, default: 40): ").strip()

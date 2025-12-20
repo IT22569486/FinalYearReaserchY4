@@ -36,6 +36,7 @@ exports.getDeviceByKey = async (req, res) => {
  * POST /api/devices
  */
 exports.registerDevice = async (req, res) => {
+  console.log("Registering device:", req.body);
   try {
     const device = await deviceService.upsertDevice(req.body);
     
