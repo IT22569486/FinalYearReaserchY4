@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; 
-import { View, Text, StyleSheet, Alert, TouchableOpacity, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native'; // Import more components
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native'; // Import more components
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuthRequest, makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -7,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { FontAwesome } from '@expo/vector-icons';
 import { BACKEND_URL } from '../config';
+import logo from '../../assets/logo.png';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -125,7 +127,7 @@ const LoginScreen = () => {
         style={styles.keyboardAvoidingContainer}
       >
         <View style={styles.header}>
-          <FontAwesome name="bus" size={60} color="#007AFF" />
+          <Image source={logo} style={{ width: 200, height: 200, marginTop: 20 }} />
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
@@ -209,7 +211,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   manualLoginButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#00B8A9',
   },
   socialLoginButton: {
     backgroundColor: '#4285F4',
@@ -243,7 +245,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   signUpLink: {
-    color: '#007AFF',
+    color: '#00B8A9',
     fontWeight: 'bold',
   },
 });
