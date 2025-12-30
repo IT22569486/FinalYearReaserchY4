@@ -122,53 +122,57 @@ exports.getRoutesByStops = async (req, res) => {
 exports.getGoogleRouteById = async (req, res) => {
   try {
     const routeId = req.params.id;
+    
+    console.log(`Fetching Google route for routeId: ${routeId}`);
     const doc = await db.collection("routes").doc(routeId).get();
-    if (!doc.exists) return res.status(404).json({ error: "Route not found" });
+    if (!doc.exists) {
+      console.error(`Route not found for id: ${routeId}`);
+      return res.status(404).json({ error: "Route not found" });
+    }
 
     const route = doc.data();
     if (!route.path || route.path.length < 2) {
+      console.error(`Invalid route path for id: ${routeId}`);
       return res.status(400).json({ error: "Invalid route or too few stops" });
     }
 
-    // Obtain API key: prefer environment variable, fallback to functions config
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY || (functions && functions.config && functions.config().google && functions.config().google.key);
+    // Obtain API key: prefer environment variable
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
+      console.error("Google Maps API key not configured on the server.");
       return res.status(500).json({ error: "Google Maps API key not configured" });
     }
 
-    const start = route.path[0].stopName || `${route.path[0].lat},${route.path[0].lng}`;
-    const destinationObj = route.path[route.path.length - 1];
-    const destination = destinationObj.stopName || `${destinationObj.lat},${destinationObj.lng}`;
+    const start = `${route.path[0].lat},${route.path[0].lng}`;
+    const destination = `${route.path[route.path.length - 1].lat},${route.path[route.path.length - 1].lng}`;
 
-    const waypoints = route.path.slice(1, route.path.length - 1)
-      .map(s => s.stopName || `${s.lat},${s.lng}`)
+    const waypoints = route.path.slice(1, -1)
+      .map(s => `${s.lat},${s.lng}`)
       .join("|");
 
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&mode=driving&departure_time=now&traffic_model=best_guess&key=${apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&key=${apiKey}`;
+    if (waypoints) {
+      url += `&waypoints=${encodeURIComponent(waypoints)}`;
+    }
+    console.log(`Requesting Directions API with URL: ${url}`);
 
-    // If there are waypoints, append them
-    const urlWithWaypoints = waypoints ? url + `&waypoints=${encodeURIComponent(waypoints)}` : url;
-
-    const response = await axios.get(urlWithWaypoints);
+    const response = await axios.get(url);
     const data = response.data;
     if (data.status !== "OK") {
+      console.error("Google Directions API failed:", data);
       return res.status(400).json({ error: "Google Directions API failed", details: data });
     }
 
     const points = data.routes[0].overview_polyline.points;
     const coordinates = decodePolyline(points).map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
 
-    const duration = data.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
-    const distance = data.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-
     res.json({
       coordinates,
       stops: route.stops || extractStopsFromPath(route.path),
-      duration,
-      distance
     });
 
   } catch (err) {
+    console.error("Failed to get Google route:", err);
     res.status(500).json({ error: "Failed to get route", details: err.message });
   }
 };

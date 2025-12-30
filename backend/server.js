@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: process.env.CORS_ORIGIN2 || "*",
     methods: ["GET","POST"]
   }
 });
@@ -38,11 +38,13 @@ const userRoutes = require("./routes/userRoutes");
 const busRoutes = require("./routes/busRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const routeRoutes = require("./routes/routeRoutes");
+const busTripRecordRoutes = require("./routes/busTripRecordRoutes");
 
 app.use("/api/user", userRoutes);
 app.use('/api/bus', busRoutes(io));
 app.use("/api/trip", tripRoutes);
 app.use("/api/routes", routeRoutes);
+app.use("/api/bus-trip-records", busTripRecordRoutes);
 
 
 
@@ -68,4 +70,4 @@ io.on("connection", (socket) => {
 
 // start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on  ${PORT}...Server running on ${cors.origin}`));
