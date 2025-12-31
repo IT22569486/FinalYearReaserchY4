@@ -217,7 +217,10 @@ class DeviceHealthMonitor:
             return
         
         try:
-            self.mqtt_client = mqtt.Client(client_id=self.device_key, protocol=mqtt.MQTTv311)
+            # Add process ID to client_id to allow multiple processes (e.g., main.py subprocess)
+            import os
+            unique_client_id = f"{self.device_key}-{os.getpid()}"
+            self.mqtt_client = mqtt.Client(client_id=unique_client_id, protocol=mqtt.MQTTv311)
             
             if self.mqtt_username and self.mqtt_password:
                 self.mqtt_client.username_pw_set(self.mqtt_username, self.mqtt_password)
@@ -421,8 +424,8 @@ class DeviceHealthMonitor:
         Send violation event
         
         Args:
-            violation_type: Type of violation (e.g., 'lane_crossing', 'speeding')
-            details: Additional violation details
+            violation_type: Type of violation (e.g., 'SLOW_DRIVING', 'UNSAFE_DISTANCE')
+            details: Additional violation details (severity, description, etc.)
         """
         topic = f"{self.mqtt_topic_base}/{self.device_key}/violation"
         payload = {
@@ -430,7 +433,7 @@ class DeviceHealthMonitor:
             'bus_number': self.bus_number,
             'route_number': self.route_number,
             'timestamp': datetime.utcnow().isoformat(),
-            'violation_type': violation_type,
+            'type': violation_type,  # Backend expects 'type' not 'violation_type'
             'details': details or {}
         }
         

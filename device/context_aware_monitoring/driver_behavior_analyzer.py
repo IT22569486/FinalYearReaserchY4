@@ -12,13 +12,17 @@ Analyzes driver behavior based on:
 Detects violations:
 - SLOW_DRIVING: Slow speed without traffic
 - UNSAFE_DISTANCE: Too close at high speed
+- SPEED_WITH_TRAFFIC: High speed in heavy traffic
+
+Sends violations to server via MQTT with offline queue fallback.
 """
 import numpy as np
 import cv2
 from collections import deque
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from enum import Enum
 import time
+
 
 class TrafficLevel(Enum):
     """Traffic density classification."""
@@ -34,6 +38,16 @@ class ViolationType(Enum):
     SLOW_DRIVING = "SLOW_DRIVING"
     UNSAFE_DISTANCE = "UNSAFE_DISTANCE"
     LANE_DEPARTURE = "LANE_DEPARTURE"
+    SPEED_WITH_TRAFFIC = "SPEED_WITH_TRAFFIC"
+
+
+# Violation severity mapping
+VIOLATION_SEVERITY = {
+    ViolationType.SLOW_DRIVING: "LOW",
+    ViolationType.UNSAFE_DISTANCE: "HIGH",
+    ViolationType.LANE_DEPARTURE: "MEDIUM",
+    ViolationType.SPEED_WITH_TRAFFIC: "MEDIUM",
+}
 
 
 class DriverBehaviorAnalyzer:
@@ -44,6 +58,8 @@ class DriverBehaviorAnalyzer:
     - Objects in our driving lane (green segmented area)
     - Traffic level based on in-lane object count
     - Violations based on speed + traffic + distance
+    
+    Reports violations to server via health_monitor.
     """
     
     # Speed thresholds (km/h)
@@ -59,9 +75,16 @@ class DriverBehaviorAnalyzer:
     
     # Time thresholds (seconds)
     SLOW_DRIVING_TIMEOUT = 10  # Alert after 10 seconds of slow driving without traffic
+    VIOLATION_COOLDOWN = 60  # Minimum seconds between reporting same violation type
     
-    def __init__(self):
-        """Initialize driver behavior analyzer."""
+    def __init__(self, health_monitor=None):
+        """
+        Initialize driver behavior analyzer.
+        
+        Args:
+            health_monitor: DeviceHealthMonitor instance for violation reporting
+        """
+        self.health_monitor = health_monitor
         self.current_speed = 0  # km/h from user input
         self.in_lane_objects: List[dict] = []  # Objects in our lane
         self.closest_object_brightness = 0  # Brightness of closest object
@@ -75,8 +98,13 @@ class DriverBehaviorAnalyzer:
         self.slow_driving_start_time: Optional[float] = None
         self.violation_message = ""
         
+        # Violation cooldown tracking (prevent spam)
+        self.last_violation_time: Dict[ViolationType, float] = {}
+        
         print("✅ Driver Behavior Analyzer initialized")
         print(f"   Speed thresholds: Slow<{self.SLOW_SPEED_THRESHOLD}, Medium<{self.MEDIUM_SPEED_THRESHOLD}, High>{self.HIGH_SPEED_THRESHOLD} km/h")
+        if health_monitor:
+            print("   📡 Violation reporting: ENABLED")
     
     def set_speed(self, speed_kmh: float) -> None:
         """
@@ -170,9 +198,50 @@ class DriverBehaviorAnalyzer:
         self.closest_object_brightness = max_brightness
         return max_brightness
     
+    def _report_violation(self, violation_type: ViolationType, details: dict) -> None:
+        """
+        Report violation to server via health_monitor with cooldown.
+        
+        Args:
+            violation_type: Type of violation detected
+            details: Additional violation details
+        """
+        print(f"🔍 DEBUG: _report_violation called with {violation_type.value}")
+        
+        if self.health_monitor is None:
+            print("⚠️ DEBUG: health_monitor is None - cannot report violation!")
+            return
+        
+        # Check cooldown
+        now = time.time()
+        last_time = self.last_violation_time.get(violation_type, 0)
+        
+        if now - last_time < self.VIOLATION_COOLDOWN:
+            print(f"⏳ DEBUG: Violation in cooldown ({self.VIOLATION_COOLDOWN - (now - last_time):.0f}s remaining)")
+            return  # Still in cooldown
+        
+        # Update cooldown
+        self.last_violation_time[violation_type] = now
+        
+        # Build violation details
+        severity = VIOLATION_SEVERITY.get(violation_type, "MEDIUM")
+        full_details = {
+            'speed_kmh': self.current_speed,
+            'traffic_level': self.current_traffic.value,
+            'in_lane_objects': len(self.in_lane_objects),
+            'closest_brightness': self.closest_object_brightness,
+            'severity': severity,
+            **details
+        }
+        
+        # Send violation
+        print(f"📤 DEBUG: Sending violation {violation_type.value} with details: {full_details}")
+        self.health_monitor.send_violation(violation_type.value, full_details)
+    
     def check_violations(self) -> Tuple[ViolationType, str]:
         """
         Check for driver violations based on speed, traffic, and distance.
+        Reports violations to server if health_monitor is connected.
         
         Returns:
             Tuple of (violation type, warning message)
@@ -194,25 +263,46 @@ class DriverBehaviorAnalyzer:
                 if slow_duration >= self.SLOW_DRIVING_TIMEOUT:
                     self.current_violation = ViolationType.SLOW_DRIVING
                     self.violation_message = f"SLOW DRIVING! No traffic - Speed: {speed:.0f}km/h for {slow_duration:.0f}s"
+                    self._report_violation(ViolationType.SLOW_DRIVING, {
+                        'duration_seconds': int(slow_duration),
+                        'description': self.violation_message
+                    })
         else:
             self.slow_driving_start_time = None  # Reset timer
         
-        # Check 2: UNSAFE DISTANCE at speed
-        if speed >= self.HIGH_SPEED_THRESHOLD:
+        # Check 2: SPEED WITH TRAFFIC - High speed in heavy traffic
+        if speed >= self.HIGH_SPEED_THRESHOLD and traffic == TrafficLevel.HIGH:
+            self.current_violation = ViolationType.SPEED_WITH_TRAFFIC
+            self.violation_message = f"HIGH SPEED IN TRAFFIC! {speed:.0f}km/h with heavy traffic"
+            self._report_violation(ViolationType.SPEED_WITH_TRAFFIC, {
+                'description': self.violation_message
+            })
+        
+        # Check 3: UNSAFE DISTANCE at speed
+        elif speed >= self.HIGH_SPEED_THRESHOLD:
             # High speed - need more distance
             if closest_brightness > self.SAFE_DISTANCE_HIGH_SPEED and len(self.in_lane_objects) > 0:
                 self.current_violation = ViolationType.UNSAFE_DISTANCE
                 self.violation_message = f"TOO CLOSE! Speed: {speed:.0f}km/h - Increase distance!"
+                self._report_violation(ViolationType.UNSAFE_DISTANCE, {
+                    'description': self.violation_message
+                })
         elif speed >= self.MEDIUM_SPEED_THRESHOLD:
             # Medium speed
             if closest_brightness > self.SAFE_DISTANCE_MEDIUM_SPEED and len(self.in_lane_objects) > 0:
                 self.current_violation = ViolationType.UNSAFE_DISTANCE
                 self.violation_message = f"FOLLOWING TOO CLOSE! Speed: {speed:.0f}km/h"
+                self._report_violation(ViolationType.UNSAFE_DISTANCE, {
+                    'description': self.violation_message
+                })
         elif speed >= self.SLOW_SPEED_THRESHOLD:
             # Slow speed but moving
             if closest_brightness > self.SAFE_DISTANCE_LOW_SPEED and len(self.in_lane_objects) > 0:
                 self.current_violation = ViolationType.UNSAFE_DISTANCE
                 self.violation_message = f"Warning: Getting too close to vehicle ahead"
+                self._report_violation(ViolationType.UNSAFE_DISTANCE, {
+                    'description': self.violation_message
+                })
         
         return self.current_violation, self.violation_message
     

@@ -59,7 +59,7 @@ COMPONENTS = [
         'folder': 'context_aware_monitoring',
         'script': 'object_distance_measurement.py',
         'description': 'Lane detection, object detection with depth estimation, ADAS warnings',
-        'author': 'Your Name',
+        'author': 'Sandaru Abey',
         'enabled': True
     },
     # =========================================================================

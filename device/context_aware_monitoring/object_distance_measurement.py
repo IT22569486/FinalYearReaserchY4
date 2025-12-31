@@ -33,11 +33,19 @@ except ImportError:
     sys.exit(1)
 
 # Import Device Health Monitor for CTB IoT system
+# Need to add parent directory to path since device_health_monitor.py is in parent folder
+import sys
+from pathlib import Path
+DEVICE_DIR = Path(__file__).parent.parent  # device/ folder
+if str(DEVICE_DIR) not in sys.path:
+    sys.path.insert(0, str(DEVICE_DIR))
+
 try:
     from device_health_monitor import get_health_monitor
     HEALTH_MONITOR_AVAILABLE = True
-except ImportError:
-    print("WARNING: Device health monitor not available. Install: pip install paho-mqtt psutil")
+    print(" Device health monitor imported successfully")
+except ImportError as e:
+    print(f"WARNING: Device health monitor not available: {e}")
     HEALTH_MONITOR_AVAILABLE = False
 
 # Import Lane Memory Tracker for temporal lane tracking
@@ -55,6 +63,15 @@ try:
 except ImportError:
     print("WARNING: Driver behavior analyzer not available")
     BEHAVIOR_ANALYZER_AVAILABLE = False
+
+# Import Adaptive Processor for performance optimizations
+try:
+    from adaptive_processor import AdaptiveProcessor, ProcessingLevel
+    ADAPTIVE_PROCESSOR_AVAILABLE = True
+    print(" Adaptive processor imported successfully")
+except ImportError:
+    print("WARNING: Adaptive processor not available")
+    ADAPTIVE_PROCESSOR_AVAILABLE = False
 
 
 def get_palette(n):
@@ -80,15 +97,15 @@ class MiDaSDepth:
         self.session = None
         
         if not Path(model_path).exists():
-            print(f"⚠️ MiDaS model not found: {model_path}")
+            print(f" MiDaS model not found: {model_path}")
             return
         
         try:
             self.session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
             self.input_name = self.session.get_inputs()[0].name
-            print(f"✅ MiDaS depth model loaded: {model_path}")
+            print(f" MiDaS depth model loaded: {model_path}")
         except Exception as e:
-            print(f"❌ Failed to load MiDaS model: {e}")
+            print(f" Failed to load MiDaS model: {e}")
             self.session = None
     
     def estimate_depth(self, frame):
@@ -239,15 +256,15 @@ def main():
     print("CTB Bus Rule Violation Detection System")
     print("=" * 60)
     
-    # Initialize Health Monitor for CTB IoT
+    # Initialize Health Monitor for violation reporting
+    # Each process now has unique MQTT client ID (device_key + process_id)
     health_monitor = None
+    device_config_path = str(DEVICE_DIR / 'device_config.json')  # Use parent folder config
     if HEALTH_MONITOR_AVAILABLE:
-        print("\n[0] CTB Device Health Monitor")
-        enable_health = input("Enable CTB health monitoring? [Y/n]: ").strip().lower()
-        if enable_health != 'n':
-            health_monitor = get_health_monitor()
+        health_monitor = get_health_monitor(config_path=device_config_path)
+        if not health_monitor.running:
             health_monitor.start()
-            print(f"   Device Key: {health_monitor.device_key}")
+        print(f"✅ Violation reporter ready (Device: {health_monitor.device_key})")
     
     # Get object detection model
     print("\n[1] Object Detection Model")
@@ -339,6 +356,19 @@ def main():
     warning_cooldown = 2.0
     proximity_threshold = 100
     
+    # Wrong-side driving detection (Option 1: Lane geometry based)
+    wrong_side_start_time = None  # When wrong-side driving started
+    WRONG_SIDE_DURATION_THRESHOLD = 3.0  # Must be on wrong side for 3 seconds to trigger
+    wrong_side_warning_active = False
+    
+    # Get health_monitor for violation reporting
+    health_monitor = None
+    if HEALTH_MONITOR_AVAILABLE:
+        # Use config from parent device/ folder to avoid creating duplicate device
+        config_path = str(DEVICE_DIR / 'device_config.json')
+        health_monitor = get_health_monitor(config_path=config_path)
+        print(f"✅ Health monitor available for violation reporting (config: {config_path})")
+    
     # Initialize Driver Behavior Analyzer
     behavior_analyzer = None
     vehicle_speed = 0
@@ -346,7 +376,7 @@ def main():
         print("\n[Driver Behavior Analysis]")
         enable_behavior = input("Enable driver behavior analysis? [Y/n]: ").strip().lower()
         if enable_behavior != 'n':
-            behavior_analyzer = DriverBehaviorAnalyzer()
+            behavior_analyzer = DriverBehaviorAnalyzer(health_monitor=health_monitor)
             
             # Get vehicle speed for simulation
             speed_input = input("Enter simulated vehicle speed (km/h, default: 40): ").strip()
@@ -388,6 +418,18 @@ def main():
     
     print(f"\nVideo: {video_path}")
     print(f"Resolution: {width}x{height} @ {fps:.1f} FPS")
+    
+    # Initialize Adaptive Processor for performance optimizations
+    adaptive_processor = None
+    if ADAPTIVE_PROCESSOR_AVAILABLE:
+        print("\n[4] Adaptive Processing Optimization")
+        enable_adaptive = input("Enable adaptive processing optimization? [Y/n]: ").strip().lower()
+        if enable_adaptive != 'n':
+            adaptive_processor = AdaptiveProcessor(width, height)
+            adaptive_processor.set_speed(vehicle_speed)  # Use the speed from behavior analyzer
+            print(f"✅ Adaptive processor enabled (Speed: {vehicle_speed} km/h)")
+            print("   Optimizations: Frame skip, Conditional MiDaS, ROI crop, Resolution scaling, Similarity skip")
+    
     print(f"\nProcessing... Press 'q' to quit\n")
     
     # Update health monitor with initial detection status
@@ -412,6 +454,19 @@ def main():
     frame_count = 0
     start_time = time.time()
     
+    # Cached results for adaptive processing
+    cached_obj_res = None
+    cached_depth_map = None
+    cached_depth_colored = None
+    cached_lane_res = None
+    cached_combined_frame = None  # For fast skip mode
+    
+    # Tracking counters for status display
+    yolo_runs_count = 0
+    midas_runs_count = 0
+    frames_skipped_count = 0
+    midas_active = True  # Current MiDaS status
+    
     try:
         while True:
             ret, frame = cap.read()
@@ -420,22 +475,119 @@ def main():
             
             frame_count += 1
             
-            # Run object detection
-            obj_results = obj_model(frame, conf=0.4, imgsz=640)
-            obj_res = obj_results[0]
+            # =====================================================================
+            # ADAPTIVE PROCESSING OPTIMIZATION
+            # =====================================================================
+            should_run_yolo = True
+            should_run_midas = True
+            should_run_lane = True
+            processing_frame = frame
+            roi_bounds = None
+            scale_factor = 1.0
+            frame_completely_skipped = False
             
-            # Run lane detection if enabled
+            if adaptive_processor is not None:
+                # Preprocess frame with all optimizations
+                preprocess_result = adaptive_processor.preprocess_frame(frame)
+                
+                should_run_yolo = preprocess_result['should_run_yolo']
+                should_run_midas = preprocess_result['should_run_midas']
+                should_run_lane = should_run_yolo  # Lane follows YOLO
+                processing_frame = preprocess_result['processed_frame']
+                roi_bounds = preprocess_result['roi_bounds']
+                scale_factor = preprocess_result['scale']
+                
+                # FAST SKIP MODE: If both YOLO and MiDaS are skipped, use cached combined frame
+                if not should_run_yolo and not should_run_midas:
+                    frame_completely_skipped = True
+                    frames_skipped_count += 1
+                    midas_active = False
+                    if cached_combined_frame is not None:
+                        # Update status overlay on cached frame
+                        skip_display = cached_combined_frame.copy()
+                        skip_rate = (frames_skipped_count / frame_count * 100) if frame_count > 0 else 0
+                        status_text = f"YOLO:{yolo_runs_count} MiDaS:{midas_runs_count} SKIP:{skip_rate:.0f}% | MIDAS:FROZEN"
+                        cv2.rectangle(skip_display, (5, 5), (450, 35), (0, 0, 0), -1)
+                        cv2.putText(skip_display, status_text, (10, 25),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1)
+                        
+                        display_frame = cv2.resize(skip_display, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+                        cv2.imshow('Object Distance Measurement', display_frame)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            print("\nInterrupted by user")
+                            break
+                        continue  # Skip all processing for this frame
+                
+                # If frame was skipped, use cached results
+                if not should_run_yolo:
+                    obj_res = cached_obj_res
+                    lane_res = cached_lane_res
+                if not should_run_midas:
+                    depth_map = cached_depth_map
+                    depth_colored = cached_depth_colored
+            
+            # =====================================================================
+            # RUN OBJECT DETECTION (conditional)
+            # =====================================================================
+            if should_run_yolo:
+                # Use fixed low resolution for FAST inference (YOLO handles resize)
+                # 320 is fast, 416 is balanced, 640 is slow but accurate
+                infer_size = 384  # Balance between speed and accuracy
+                
+                obj_results = obj_model(processing_frame, conf=0.4, imgsz=infer_size)
+                obj_res = obj_results[0]
+                cached_obj_res = obj_res
+                yolo_runs_count += 1  # Track YOLO runs
+                
+                # Update adaptive processor with detection state
+                if adaptive_processor is not None:
+                    has_objects = obj_res.boxes is not None and len(obj_res.boxes) > 0
+                    adaptive_processor.set_detection_state(has_objects, 0)
+            
+            # Run lane detection if enabled (conditional)
             lane_warning = False
             detected_lane_masks = []  # Collect lane info for memory tracker
             
-            if lane_model is not None:
-                lane_results = lane_model(frame, conf=0.4, imgsz=640)
+            if lane_model is not None and should_run_lane:
+                # Use fixed low resolution for lane detection too
+                lane_results = lane_model(processing_frame, conf=0.4, imgsz=384)
                 lane_res = lane_results[0]
+                cached_lane_res = lane_res
+            elif lane_model is not None and not should_run_lane:
+                lane_res = cached_lane_res
             else:
                 lane_res = None
             
-            # Estimate depth
-            depth_map, depth_colored = depth_estimator.estimate_depth(frame)
+            # =====================================================================
+            # RUN DEPTH ESTIMATION (conditional MiDaS)
+            # =====================================================================
+            if should_run_midas:
+                depth_map, depth_colored = depth_estimator.estimate_depth(frame)
+                cached_depth_map = depth_map
+                cached_depth_colored = depth_colored
+                midas_runs_count += 1  # Track MiDaS runs
+                midas_active = True  # MiDaS is running
+                
+                # Cache result in adaptive processor
+                if adaptive_processor is not None and depth_map is not None:
+                    adaptive_processor.cache_midas_result(depth_map)
+            else:
+                midas_active = False  # MiDaS is frozen (using cache)
+                # Use cached MiDaS result
+                if adaptive_processor is not None:
+                    cached = adaptive_processor.get_cached_midas_result()
+                    if cached is not None:
+                        depth_map = cached
+                        # Regenerate colored version from cached depth
+                        depth_min = depth_map.min()
+                        depth_max = depth_map.max()
+                        if depth_max - depth_min > 0:
+                            depth_normalized = (depth_map - depth_min) / (depth_max - depth_min)
+                        else:
+                            depth_normalized = np.zeros_like(depth_map)
+                        depth_uint8 = (depth_normalized * 255).astype(np.uint8)
+                        depth_colored = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_MAGMA)
+                        cached_depth_colored = depth_colored
             
             # Create annotated frame
             annotated = frame.copy()
@@ -506,8 +658,8 @@ def main():
                     # Draw road structure prediction (STRAIGHT/CURVE)
                     annotated = lane_tracker.draw_road_structure(annotated)
                 
-                # Detect wrong-side driving: if 2 or more lines on left side
-                wrong_side_driving = len(left_lanes) >= 2
+                # NOTE: Wrong-side driving detection removed due to false positives
+                # The simple heuristic (2+ lanes on left) was not reliable enough
                 
                 # Second pass: draw lanes and check warnings
                 for i in range(len(masks)):
@@ -589,11 +741,7 @@ def main():
                                     should_warn = True
                                     warning_type = "RIGHT_LANE_DEPARTURE"
                             
-                            # Case 3: Wrong-side driving warning (2 lines on left = wrong side)
-                            if wrong_side_driving and lane_center_x < center_x:
-                                if vehicle_touching_lane or min_distance < proximity_threshold:
-                                    should_warn = True
-                                    warning_type = "WRONG_SIDE_LANE_CROSSING"
+                            # NOTE: Case 3 (wrong-side driving) removed - too many false positives
                             
                             if should_warn:
                                 lane_warning = True
@@ -607,15 +755,57 @@ def main():
                                     health_monitor.send_violation('lane_departure', {
                                         'lane_type': lane_names.get(cls, 'unknown') if lane_names else 'solid',
                                         'warning_type': warning_type,
-                                        'wrong_side': wrong_side_driving,
                                         'distance': min_distance,
                                         'frame': frame_count
                                     })
                 
-                # Display wrong-side driving warning
-                if wrong_side_driving:
-                    cv2.putText(annotated, "WARNING: WRONG SIDE DRIVING!", (width//2 - 180, 80),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                # Wrong-side driving detection using lane geometry
+                # For left-side driving countries (Sri Lanka), if vehicle is to the RIGHT
+                # of the right lane boundary, they're in oncoming traffic lane
+                is_on_wrong_side = False
+                if lane_tracker is not None and lane_tracker.right_lane_points is not None:
+                    right_lane_pts = lane_tracker.right_lane_points
+                    
+                    # Get the right lane x-position at the vehicle's y-position (center_y)
+                    # Find the closest point on the right lane to the vehicle's y-position
+                    if len(right_lane_pts) > 0:
+                        # Find y-values closest to center_y
+                        y_vals = right_lane_pts[:, 1]
+                        closest_idx = np.argmin(np.abs(y_vals - center_y))
+                        right_lane_x_at_vehicle = right_lane_pts[closest_idx, 0]
+                        
+                        # If vehicle center_x is significantly to the RIGHT of the right lane
+                        # (with a margin to avoid false positives)
+                        margin = 50  # pixels of tolerance
+                        if center_x > right_lane_x_at_vehicle + margin:
+                            is_on_wrong_side = True
+                
+                # Temporal filtering: only warn after sustained wrong-side driving
+                if is_on_wrong_side:
+                    if wrong_side_start_time is None:
+                        wrong_side_start_time = time.time()
+                    
+                    duration_on_wrong_side = time.time() - wrong_side_start_time
+                    
+                    if duration_on_wrong_side >= WRONG_SIDE_DURATION_THRESHOLD:
+                        wrong_side_warning_active = True
+                        
+                        # Draw warning
+                        cv2.putText(annotated, "WARNING: WRONG SIDE DRIVING!", (width//2 - 200, 80),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+                        
+                        # Report violation (with cooldown)
+                        if health_monitor and (time.time() - last_warning_time) > 10:  # 10s cooldown
+                            health_monitor.send_violation('wrong_side_driving', {
+                                'duration_seconds': duration_on_wrong_side,
+                                'severity': 'HIGH',
+                                'description': f'Wrong side driving for {duration_on_wrong_side:.1f}s'
+                            })
+                            last_warning_time = time.time()
+                else:
+                    # Reset timer if vehicle is back in correct lane
+                    wrong_side_start_time = None
+                    wrong_side_warning_active = False
                 
                 # Draw vehicle position dot
                 dot_color = (0, 0, 255) if lane_warning else (0, 255, 0)
@@ -695,15 +885,18 @@ def main():
                         })
                     
                     # Draw bounding box with color based on proximity
-                    # Red = Close (bright in depth map)
-                    # Orange = Medium
-                    # Green = Far (dark in depth map)
-                    if proximity == "Close":
-                        box_color = (0, 0, 255)  # Red - close (bright pixels)
+                    # Dark Red = Very Close/Close (bright in depth map) - DANGER
+                    # Orange = Near
+                    # Yellow = Medium
+                    # Green = Far (dark in depth map) - Safe
+                    if proximity in ["Very Close", "Close"]:
+                        box_color = (0, 0, 139)  # Dark Red - very close (danger!)
+                    elif proximity == "Near":
+                        box_color = (0, 0, 255)  # Red - near
                     elif proximity == "Medium":
                         box_color = (0, 165, 255)  # Orange - medium
-                    else:
-                        box_color = (0, 255, 0)  # Green - far (dark pixels)
+                    else:  # Far
+                        box_color = (0, 255, 0)  # Green - far (safe)
                     
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), box_color, 3)
                     
@@ -772,10 +965,35 @@ def main():
             else:
                 combined_frame = annotated
             
-            # Add frame info
-            info_text = f"Frame: {frame_count} | FPS: {frame_count / (time.time() - start_time):.1f}"
-            cv2.putText(combined_frame, info_text, (10, height - 20),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # =====================================================================
+            # ADAPTIVE PROCESSOR UPDATE (skip overlay for speed)
+            # =====================================================================
+            if adaptive_processor is not None and detected_objects:
+                max_brightness = max(obj.get('brightness', 0) for obj in detected_objects)
+                adaptive_processor.set_detection_state(True, max_brightness)
+            
+            # =====================================================================
+            # STATUS BAR: Detection rates and MiDaS status
+            # =====================================================================
+            fps = frame_count / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
+            skip_rate = (frames_skipped_count / frame_count * 100) if frame_count > 0 else 0
+            midas_status = "ACTIVE" if midas_active else "FROZEN"
+            midas_color = (0, 255, 0) if midas_active else (0, 200, 255)  # Green if active, Orange if frozen
+            
+            # Draw status bar background
+            cv2.rectangle(combined_frame, (5, 5), (500, 40), (0, 0, 0), -1)
+            
+            # Status text
+            status_text = f"F:{frame_count} FPS:{fps:.0f} | YOLO:{yolo_runs_count} MiDaS:{midas_runs_count} SKIP:{skip_rate:.0f}%"
+            cv2.putText(combined_frame, status_text, (10, 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            # MiDaS status indicator (separate for visibility)
+            cv2.putText(combined_frame, f"MIDAS:{midas_status}", (380, 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, midas_color, 2)
+            
+            # Cache combined frame for fast skip mode
+            cached_combined_frame = combined_frame
             
             # Write and display
             out.write(combined_frame)
@@ -802,6 +1020,24 @@ def main():
     print(f"\n{'='*60}")
     print(f"Processed {frame_count} frames in {elapsed:.1f}s ({frame_count/elapsed:.1f} FPS)")
     print(f"Output saved: {output_path}")
+    
+    # Print adaptive processor statistics
+    if adaptive_processor is not None:
+        stats = adaptive_processor.get_stats()
+        print(f"\n📊 ADAPTIVE PROCESSING STATISTICS:")
+        print(f"   Total frames: {stats['total_frames']}")
+        print(f"   Frames skipped: {stats['frames_skipped']} ({stats['skip_rate_percent']:.1f}%)")
+        print(f"   YOLO inferences: {stats['yolo_runs']}")
+        print(f"   MiDaS inferences: {stats['midas_runs']}")
+        print(f"   Avg preprocessing time: {stats['avg_preprocessing_ms']:.2f}ms")
+        
+        # Calculate savings
+        savings_yolo = (1 - stats['yolo_runs'] / max(1, stats['total_frames'])) * 100
+        savings_midas = (1 - stats['midas_runs'] / max(1, stats['total_frames'])) * 100
+        print(f"\n💡 PROCESSING SAVINGS:")
+        print(f"   YOLO savings: {savings_yolo:.1f}% fewer inferences")
+        print(f"   MiDaS savings: {savings_midas:.1f}% fewer inferences")
+    
     print(f"{'='*60}")
 
 

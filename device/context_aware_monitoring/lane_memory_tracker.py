@@ -4,6 +4,8 @@ Lane Memory and Tracking Module
 Provides temporal lane memory using Kalman filtering and polynomial fitting
 for robust lane detection even when markings are temporarily obscured.
 
+time එකත් එක්ක lane model එක stable කරලා track කරන්න
+
 Includes Road Structure Prediction (STRAIGHT/CURVE) based on lane curvature.
 """
 import numpy as np
@@ -12,7 +14,7 @@ from collections import deque
 from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
-# Try to import scipy for advanced smoothing
+# Try to import scipy for advanced smoothing / advanced calculations
 try:
     from scipy.ndimage import uniform_filter1d
     SCIPY_AVAILABLE = True
