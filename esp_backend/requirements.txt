@@ -1,0 +1,13 @@
+flask
+flask-cors
+flask-socketio
+pymongo
+pandas
+joblib
+scikit-learn==1.6.1
+lightgbm
+gunicorn
+requests
+python-dotenv
+eventlet
+certifi
