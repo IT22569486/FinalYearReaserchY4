@@ -199,22 +199,6 @@ const NotificationsScreen = ({ navigation }) => {
     }
   };
 
-  // Test notification manually
-  const handleTestNotification = async () => {
-    console.log('🧪 Testing notification popup');
-    await sendNotification(
-      'Test Notification',
-      'This is a test notification to verify the popup system is working',
-      { test: true },
-      {
-        showNative: true,
-        showInApp: true,
-        duration: 5000,
-        type: 'success',
-      }
-    );
-  };
-
   const NotificationItem = ({ notification }) => {
     const typeInfo = getNotificationTypeDisplay(notification.type);
     const timeStr = formatNotificationDate(notification.createdAt);
@@ -279,23 +263,14 @@ const NotificationsScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={styles.headerButtons}>
+        {notifications.length > 0 && (
           <TouchableOpacity
-            onPress={handleTestNotification}
-            style={styles.testButton}
+            onPress={handleMarkAllAsRead}
+            style={styles.markAllButton}
           >
-            <Ionicons name="alert-circle" size={18} color="#FF9800" />
-            <Text style={styles.testButtonText}>Test</Text>
+            <Text style={styles.markAllButtonText}>Mark all as read</Text>
           </TouchableOpacity>
-          {notifications.length > 0 && (
-            <TouchableOpacity
-              onPress={handleMarkAllAsRead}
-              style={styles.markAllButton}
-            >
-              <Text style={styles.markAllButtonText}>Mark all as read</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
       </View>
 
       {/* Notifications List */}
@@ -347,25 +322,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-  },
-  testButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#FFF3E0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  testButtonText: {
-    fontSize: 12,
-    color: '#FF9800',
-    fontWeight: '600',
   },
   markAllButton: {
     paddingHorizontal: 12,
