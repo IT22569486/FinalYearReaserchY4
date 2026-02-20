@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import apiClient from '../api/axiosConfig';
 import { BACKEND_URL } from '../config';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
 
 // Mock data - replace with API call
 const MOCK_TIMETABLES = [
@@ -31,23 +34,35 @@ const MOCK_TIMETABLES = [
 const TimetableScreen = () => {
   const [timetables, setTimetables] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const navigation = useNavigation();
+  const { refreshSession } = useSession();
 
   useEffect(() => {
-    const fetchTimetables = async () => {
-      try {
-        // const response = await axios.get(`${BACKEND_URL}/api/timetables`);
-        // setTimetables(response.data);
-        
-        // Using mock data for now
-        setTimetables(MOCK_TIMETABLES);
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchTimetables();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
-      } catch (error) {
-        console.error("Failed to fetch timetables:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchTimetables = async () => {
+    try {
+      await updateLastActivity();
+      await refreshSession();
+      
+      // const response = await apiClient.get('/api/timetables');
+      // setTimetables(response.data);
+      
+      // Using mock data for now
+      setTimetables(MOCK_TIMETABLES);
 
+    } catch (error) {
+      console.error("Failed to fetch timetables:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchTimetables();
   }, []);
 
