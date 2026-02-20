@@ -131,33 +131,60 @@ exports.getGoogleRouteById = async (req, res) => {
     }
 
     const route = doc.data();
-    if (!route.path || route.path.length < 2) {
-      console.error(`Invalid route path for id: ${routeId}`);
-      return res.status(400).json({ error: "Invalid route or too few stops" });
-    }
 
-    // Obtain API key: prefer environment variable
+    // Obtain API key
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
       console.error("Google Maps API key not configured on the server.");
       return res.status(500).json({ error: "Google Maps API key not configured" });
     }
 
-    const start = `${route.path[0].lat},${route.path[0].lng}`;
-    const destination = `${route.path[route.path.length - 1].lat},${route.path[route.path.length - 1].lng}`;
+    let directionsUrl;
 
-    const waypoints = route.path.slice(1, -1)
-      .map(s => `${s.lat},${s.lng}`)
-      .join("|");
+    // Check if route has googleMapsUrl field
+    if (route.googleMapsUrl) {
+      console.log(`Using googleMapsUrl: ${route.googleMapsUrl}`);
+      
+      // Parse the URL to extract origin, destination, and waypoints
+      const urlObj = new URL(`https://${route.googleMapsUrl.replace(/^https?:\/\//, '')}`);
+      const params = urlObj.searchParams;
+      
+      const origin = params.get('origin');
+      const destination = params.get('destination');
+      const waypoints = params.get('waypoints');
 
-    let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&key=${apiKey}`;
-    if (waypoints) {
-      url += `&waypoints=${encodeURIComponent(waypoints)}`;
+      if (!origin || !destination) {
+        return res.status(400).json({ error: "Invalid googleMapsUrl format" });
+      }
+
+      directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&key=${apiKey}`;
+      if (waypoints) {
+        directionsUrl += `&waypoints=${encodeURIComponent(waypoints)}`;
+      }
+    } else {
+      // Fallback to traditional path-based route
+      if (!route.path || route.path.length < 2) {
+        console.error(`Invalid route path for id: ${routeId}`);
+        return res.status(400).json({ error: "Invalid route or too few stops" });
+      }
+
+      const start = `${route.path[0].lat},${route.path[0].lng}`;
+      const destination = `${route.path[route.path.length - 1].lat},${route.path[route.path.length - 1].lng}`;
+
+      const waypoints = route.path.slice(1, -1)
+        .map(s => `${s.lat},${s.lng}`)
+        .join("|");
+
+      directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&key=${apiKey}`;
+      if (waypoints) {
+        directionsUrl += `&waypoints=${encodeURIComponent(waypoints)}`;
+      }
     }
-    console.log(`Requesting Directions API with URL: ${url}`);
 
-    const response = await axios.get(url);
+    console.log(`Requesting Directions API`);
+    const response = await axios.get(directionsUrl);
     const data = response.data;
+    
     if (data.status !== "OK") {
       console.error("Google Directions API failed:", data);
       return res.status(400).json({ error: "Google Directions API failed", details: data });

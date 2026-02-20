@@ -4,35 +4,14 @@ import { useNavigation } from '@react-navigation/native';
 import RNPickerSelect from 'react-native-picker-select';
 import { Ionicons } from '@expo/vector-icons';
 import io from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import MapViewComponent from '../components/MapViewComponent';
 import { BACKEND_URL } from '../config';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
 
 const socket = io(BACKEND_URL);
-
-/**
- * Parses a Google Maps directions URL to extract an array of coordinates.
- * @param {string} url The Google Maps URL.
- * @returns {Array<{latitude: number, longitude: number}>} An array of coordinate objects.
- */
-function parseGoogleMapsUrl(url) {
-  if (!url) return [];
-  // Regex to find all lat,lng pairs in the /dir/ part of the URL
-  const regex = /(origin|destination|waypoints)=([0-9.\-]+),([0-9.\-]+)/g;
-
-  const match = url.match(regex);
-
-  if (!match || !match[1]) return [];
-
-  return match[1]
-    .split('/')
-    .filter(Boolean) // Remove any empty strings from trailing slashes
-    .map(pair => {
-      const [lat, lng] = pair.split(',');
-      return { latitude: parseFloat(lat), longitude: parseFloat(lng) };
-    });
-}
 
 const BusRoutesScreen = () => {
   const [allBuses, setAllBuses] = useState([]);
@@ -44,6 +23,64 @@ const BusRoutesScreen = () => {
   const [passengerLocation, setPassengerLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const navigation = useNavigation();
+  const { refreshSession } = useSession();
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      initializeScreen();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const initializeScreen = async () => {
+    try {
+      await updateLastActivity();
+      await refreshSession();
+
+      (async () => {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setErrorMsg('Permission to access location was denied');
+          return;
+        }
+        let location = await Location.getCurrentPositionAsync({});
+        setPassengerLocation(location.coords);
+      })();
+
+      const fetchData = async () => {
+        try {
+          const [routesRes, busesRes] =
+           await Promise.all([
+            apiClient.get('/api/routes'),
+            apiClient.get('/api/bus'),
+          ]);
+          setRoutes(routesRes.data);
+          setAllBuses(busesRes.data);
+        } catch (err) {
+          setErrorMsg('Failed to fetch data');
+          console.error(err);
+        }
+      };
+
+      fetchData();
+
+      socket.on('busLocationUpdate', (updatedBus) => {
+        setAllBuses((prevBuses) => {
+          const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
+          if (index !== -1) {
+            const newBuses = [...prevBuses];
+            newBuses[index] = updatedBus;
+            return newBuses;
+          }
+          return [...prevBuses, updatedBus];
+        });
+      });
+
+      return () => socket.off('busLocationUpdate');
+    } catch (error) {
+      console.error('Error initializing BusRoutesScreen:', error);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -60,8 +97,8 @@ const BusRoutesScreen = () => {
       try {
         const [routesRes, busesRes] =
          await Promise.all([
-          axios.get(`${BACKEND_URL}/api/routes`),
-          axios.get(`${BACKEND_URL}/api/bus`),
+          apiClient.get('/api/routes'),
+          apiClient.get('/api/bus'),
         ]);
         setRoutes(routesRes.data);
         setAllBuses(busesRes.data);
@@ -96,7 +133,7 @@ const BusRoutesScreen = () => {
 
     const fetchRouteDetails = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/routes/google-route/${selectedRoute}`);
+        const res = await apiClient.get(`/api/routes/google-route/${selectedRoute}`);
         setSelectedRouteDetails(res.data);
       } catch (err) {
         console.error('Failed to fetch route details:', err);
@@ -162,20 +199,39 @@ const BusRoutesScreen = () => {
 
   const handleBusPress = (bus) => {
     if (!selectedOrigin || !selectedDestination) {
-        Alert.alert('Missing Information', 'Please select both an origin and a destination.');
-        return;
+      Alert.alert('Missing Information', 'Please select both an origin and a destination.');
+      return;
     }
+
+    const startTrip = async () => {
+      try {
+        const response = await apiClient.post('/api/trip/start', {
+          busId: bus.busId,
+          departure: selectedOrigin,
+          destination: selectedDestination,
+        });
+
+        const tripId = response?.data?.id || response?.data?._id || null;
+
+        navigation.navigate('CurrentTrip', {
+          busId: bus.busId,
+          routeId: bus.routeId,
+          origin: selectedOrigin,
+          destination: selectedDestination,
+          tripId,
+        });
+      } catch (err) {
+        console.error('Failed to start trip:', err?.response?.data || err.message);
+        Alert.alert('Unable to start trip', 'Please try again or re-login.');
+      }
+    };
+
     Alert.alert(
       'Confirm Trip',
       `Travel from ${selectedOrigin} to ${selectedDestination} with Bus ${bus.busId}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => navigation.navigate('CurrentTrip', { 
-            busId: bus.busId, 
-            routeId: bus.routeId,
-            origin: selectedOrigin,
-            destination: selectedDestination,
-        }) },
+        { text: 'Confirm', onPress: () => startTrip() },
       ],
       { cancelable: false }
     );
