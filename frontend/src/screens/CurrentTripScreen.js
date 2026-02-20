@@ -3,11 +3,14 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import io from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapViewComponent from '../components/MapViewComponent';
 import { BACKEND_URL, ML_BACKEND_URL } from '../config';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
+import axios from 'axios';
 
 const socket = io(BACKEND_URL);
 
@@ -27,7 +30,7 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 // Helper function to get the last 3 records of a trip from Firestore
 const getLastThreeRecordsOfTrip = async (tripId) => {
     try {
-        const response = await axios.get(`${BACKEND_URL}/api/bus-trip-records/trip/${tripId}/last-three`);
+        const response = await apiClient.get(`/api/bus-trip-records/trip/${tripId}/last-three`);
         return response.data;
     } catch (error) {
         console.error('Error getting last three records of trip:', error);
@@ -36,7 +39,7 @@ const getLastThreeRecordsOfTrip = async (tripId) => {
 };
 
 const CurrentTripScreen = ({ route }) => {
-  const { busId, origin: userOrigin, destination: userDestination } = route.params || {};
+  const { busId, origin: userOrigin, destination: userDestination, tripId: passengeTripId } = route.params || {};
   
   const [bus, setBus] = useState(null);
   const [allRoutes, setAllRoutes] = useState([]);
@@ -47,7 +50,8 @@ const CurrentTripScreen = ({ route }) => {
   const [predictedPassengers, setPredictedPassengers] = useState(null); 
   const [predictedArrivalTime, setPredictedArrivalTime] = useState(null); 
   const [totalEtaToDestination, setTotalEtaToDestination] = useState(null);
-  const navigation = useNavigation(); 
+  const navigation = useNavigation();
+  const { refreshSession } = useSession(); 
 
   // Effect to fetch bus data and passenger location
   useEffect(() => {
@@ -72,12 +76,15 @@ const CurrentTripScreen = ({ route }) => {
 
     const fetchInitialData = async () => {
       try {
+        await updateLastActivity();
+        await refreshSession();
+
         // Fetch the specific bus
-        const busRes = await axios.get(`${BACKEND_URL}/api/bus/${busId}`);
+        const busRes = await apiClient.get(`/api/bus/${busId}`);
         setBus(busRes.data);
 
         // Fetch all routes for context
-        const routesRes = await axios.get(`${BACKEND_URL}/api/routes`);
+        const routesRes = await apiClient.get('/api/routes');
         setAllRoutes(routesRes.data);
 
       } catch (err) {
@@ -106,7 +113,7 @@ const CurrentTripScreen = ({ route }) => {
     if (bus && bus.routeId) {
       const fetchRouteDetails = async () => {
         try {
-          const res = await axios.get(`${BACKEND_URL}/api/routes/google-route/${bus.routeId}`);
+          const res = await apiClient.get(`/api/routes/google-route/${bus.routeId}`);
           setRouteDetails(res.data);
         } catch (err) {
           setErrorMsg('Could not find the specified route details.');
@@ -140,21 +147,33 @@ const CurrentTripScreen = ({ route }) => {
 
   const handleEndTrip = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        await axios.post(`${BACKEND_URL}/api/trip/end`, {tripId}, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      if (!passengeTripId) {
+        console.error('No trip ID available to end trip');
+        Alert.alert('Error', 'Trip ID not found. Cannot end trip.');
+        return;
       }
+      console.log('Failed to end trip on the server:', passengeTripId);
+      await apiClient.put('/api/trip/end', { tripId: passengeTripId });
+
     } catch (error) {
       console.error('Failed to end trip on the server:', error);
+      Alert.alert('Error', 'Failed to end trip. Please try again.');
     } finally {
-      // Reset the navigation stack to the MainTabs, starting on the Routes screen.
-      // This prevents the user from navigating back to the ended trip.
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs', params: { screen: 'Routes' } }],
-      });
+      // Navigate to rating screen instead of going back
+      if (bus && busId) {
+        navigation.navigate('Rating', {
+          tripId: passengeTripId,
+          busId: busId,
+          driverId: bus.driverId || bus.driver_id || 'unknown',
+          busNumber: bus.busId,
+        });
+      } else {
+        // Fallback if bus data is not available
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs', params: { screen: 'Routes' } }],
+        });
+      }
     }
   };
 
@@ -257,8 +276,8 @@ const CurrentTripScreen = ({ route }) => {
             minute: minute,
           };
           console.log("Sending for arrival time prediction:", JSON.stringify(arrivalTimeInput, null, 2));
-          const res = await axios.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
-          
+          const res = await apiClient.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
+          // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/arrival-time`, arrivalTimeInput);          
           console.log("Arrival time prediction received:", res.data);
           if (res.data.predicted_arrival_time_seconds) {
             setPredictedArrivalTime(res.data.predicted_arrival_time_seconds / 60); // Convert to minutes
@@ -304,7 +323,9 @@ const CurrentTripScreen = ({ route }) => {
                             };
                             console.log("Sending for arrival time prediction:", JSON.stringify(arrivalTimeInput, null, 2));
 
-                            const res = await axios.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
+                            const res = await apiClient.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
+                            // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/arrival-time`, arrivalTimeInput);
+
                             if (res.data.predicted_arrival_time_seconds) {
                                 totalSeconds += res.data.predicted_arrival_time_seconds;
                             }
@@ -415,7 +436,8 @@ const CurrentTripScreen = ({ route }) => {
                 // Prepare input for this segment
                 // Use last 3 records in sequence
                 const passengerFlowInput = { sequence: sequence.slice(-3) };
-                const res = await axios.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+                const res = await apiClient.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+                // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/passenger-flow`, passengerFlowInput);
                 const netChange = res.data.net_change || 0;
                 totalNetChange += netChange;
                 console.log("Sending for arrival time prediction:", JSON.stringify(passengerFlowInput, null, 2));
@@ -433,7 +455,9 @@ const CurrentTripScreen = ({ route }) => {
             } else {
               // Fallback: just predict next stop as before
               const passengerFlowInput = { sequence: sequence.slice(-3) };
-              const res = await axios.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+              const res = await apiClient.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+              // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/passenger-flow`, passengerFlowInput);
+
               const netChange = res.data.net_change || 0;
                         console.log("Sending for arrival time prediction:", JSON.stringify(passengerFlowInput, null, 2));
 
@@ -489,7 +513,7 @@ const CurrentTripScreen = ({ route }) => {
              {totalEtaToDestination !== null && (
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Arrival at {userOrigin}</Text>
-                <Text style={styles.predictionValue}>~{totalEtaToDestination.toFixed(2)} min</Text>
+                <Text style={styles.predictionValue}>~{Math.floor(totalEtaToDestination)}m {Math.round((totalEtaToDestination % 1) * 60)}s</Text>
               </View>
             )}
             {predictedPassengers !== null && (

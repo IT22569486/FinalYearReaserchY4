@@ -29,6 +29,7 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
       style={StyleSheet.absoluteFillObject}
       initialRegion={region}
       showsUserLocation={true}
+      provider="google"
       // followsUserLocation={true}
     >
       {/* Draw the selected route path if it exists */}
@@ -46,13 +47,16 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
           key={`stop-${index}`}
           coordinate={{ latitude: stop.lat, longitude: stop.lng }}
           title={stop.stopName}
-          // Use a lower zIndex to keep stops below bus icons
-          zIndex={0}
+          zIndex={50}
         >
-          {/* Use a custom view for the stop marker */}
-          {/* <View style={styles.stopMarker}>
+          <View style={styles.stopMarker}>
             <View style={styles.stopMarkerDot} />
-          </View> */}
+          </View>
+          <Callout tooltip>
+            <View style={styles.stopCallout}>
+              <Text style={styles.stopName}>{stop.stopName}</Text>
+            </View>
+          </Callout>
         </Marker>
       ))}
 
@@ -68,7 +72,7 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
               longitude: bus.location.lng,
             }}
             title={`Bus ${bus.busId}`}
-            onCalloutPress={() => onBusPress && onBusPress(bus)}
+            onPress={() => onBusPress && onBusPress(bus)}
             zIndex={150}
           >
             <Ionicons name="bus" size={30} color="#007AFF" />
