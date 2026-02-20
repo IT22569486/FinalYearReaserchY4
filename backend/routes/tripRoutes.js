@@ -11,11 +11,11 @@ router.get("/", tripController.handleGetTrips); // Get all trips for a user
 router.get("/active", tripController.handleGetActiveTrip); // Get the current active trip
 
 // POST routes
-router.post("/start", tripController.handleStartTrip);
-router.post("/end", tripController.handleEndTrip);
-router.post("/cancel", tripController.handleCancelTrip);
+router.post("/start", tripController.handleStartTrip, protect);
 
 // PATCH or PUT for updates
 router.patch("/location", tripController.handleUpdateLocation);
+router.put("/end", tripController.handleEndTrip, protect);
+router.put("/cancel", tripController.handleCancelTrip, protect);
 
 module.exports = router;
