@@ -4,22 +4,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jwtDecode } from 'jwt-decode'; 
+import { jwtDecode } from 'jwt-decode';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const { refreshSession } = useSession();
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchUserData();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const fetchUserData = async () => {
+    try {
+      await updateLastActivity();
+      await refreshSession();
+      
       const token = await AsyncStorage.getItem('userToken');
       if (token) {
         const decodedToken = jwtDecode(token);
         setUserName(decodedToken.name || 'User');
       }
-    };
-    fetchUserData();
-  }, []);
+    } catch (error) {
+      console.error('Error in HomeScreen:', error);
+    }
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
