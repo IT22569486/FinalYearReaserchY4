@@ -5,10 +5,12 @@
  * Uses Firebase Firestore for persistence
  */
 
-const aedes = require('aedes')();
 const net = require('net');
 const deviceService = require('../services/deviceService');
 const violationService = require('../services/violationService');
+
+// Aedes will be dynamically imported when needed
+let aedes = null;
 
 let io = null; // Socket.IO instance for dashboard updates
 
@@ -22,22 +24,27 @@ function setSocketIO(socketIO) {
 /**
  * Start MQTT broker
  */
-function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
-    // Create TCP server for MQTT
-    const mqttServer = net.createServer(aedes.handle);
-    
-    mqttServer.listen(mqttPort, () => {
-        console.log(`📡 MQTT Broker:     mqtt://localhost:${mqttPort}`);
-    });
-
-    // Handle client connections
-    aedes.on('client', (client) => {
-        console.log(`🔌 MQTT Client connected: ${client.id}`);
-    });
+async function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
+    try {
+        // Dynamically import aedes ES module
+        const aedesModule = await import('aedes');
+        aedes = aedesModule.default();
+        
+        // Create TCP server for MQTT
+        const mqttServer = net.createServer(aedes.handle);
+        
+        mqttServer.listen(mqttPort, () => {
+            console.log(`MQTT Broker:     mqtt://localhost:${mqttPort}`);
+        });
+        
+        // Handle client connections
+        aedes.on('client', (client) => {
+            console.log(`MQTT Client connected: ${client.id}`);
+        });
 
     // Handle client disconnections
     aedes.on('clientDisconnect', async (client) => {
-        console.log(`🔌 MQTT Client disconnected: ${client.id}`);
+        console.log(`MQTT Client disconnected: ${client.id}`);
         
         // Try to mark device as offline if client ID contains device key
         if (client.id && client.id.startsWith('CTB-')) {
@@ -71,7 +78,7 @@ function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
             return;
         }
 
-        console.log(`📨 MQTT Message: ${topic}`);
+        console.log(`MQTT Message: ${topic}`);
 
         // Route messages based on topic
         try {
@@ -91,11 +98,16 @@ function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
 
     // Handle subscriptions
     aedes.on('subscribe', (subscriptions, client) => {
-        console.log(`📬 Client ${client.id} subscribed to:`, 
+        console.log(`Client ${client.id} subscribed to:`, 
             subscriptions.map(s => s.topic).join(', '));
     });
 
-    return aedes;
+        return aedes;
+    } catch (error) {
+        console.warn('MQTT Broker disabled (aedes not available):', error.message);
+        console.warn('Device monitoring features will work, but MQTT broker is disabled.');
+        return null;
+    }  
 }
 
 /**
@@ -109,7 +121,7 @@ async function handleHealthUpdate(topic, payload) {
         return;
     }
 
-    console.log(`💓 Health update from ${device_key}`);
+    console.log(`Health update from ${device_key}`);
 
     try {
         // Update device in Firebase
@@ -129,7 +141,7 @@ async function handleHealthUpdate(topic, payload) {
             });
         }
 
-        console.log(`✅ Health update processed for ${device_key}`);
+        console.log(`Health update processed for ${device_key}`);
     } catch (err) {
         console.error(`Error processing health update: ${err.message}`);
     }
@@ -146,7 +158,7 @@ async function handleViolation(topic, payload) {
         return;
     }
 
-    console.log(`⚠️ Violation from ${device_key}: ${type}`);
+    console.log(`Violation from ${device_key}: ${type}`);
 
     try {
         // Get device info
@@ -171,7 +183,7 @@ async function handleViolation(topic, payload) {
             });
         }
 
-        console.log(`✅ Violation recorded: ${violation.id}`);
+        console.log(`Violation recorded: ${violation.id}`);
     } catch (err) {
         console.error(`Error processing violation: ${err.message}`);
     }
@@ -188,7 +200,7 @@ async function handleStatusUpdate(topic, payload) {
         return;
     }
 
-    console.log(`📊 Status update from ${device_key}: ${status}`);
+    console.log(`Status update from ${device_key}: ${status}`);
 
     try {
         await deviceService.updateDeviceStatus(device_key, status);
@@ -216,7 +228,7 @@ async function handleComponentUpdate(topic, payload) {
     const parts = topic.split('/');
     const deviceKey = parts[2];
     
-    console.log(`🔧 Component update from ${deviceKey}: ${component} = ${status}`);
+    console.log(`Component update from ${deviceKey}: ${component} = ${status}`);
 
     // Notify dashboard
     if (io) {
