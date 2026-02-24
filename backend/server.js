@@ -97,9 +97,12 @@ app.use("/api/devices", deviceRoutes);
 app.use("/api/violations", violationRoutes);
 
 // Dashboard route - serve index.html for all non-API routes
-app.get('*', (req, res) => {
+// Note: Using app.use() instead of app.get('*') to avoid path-to-regexp parsing issues
+app.use((req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(__dirname, 'public/index.html'));
+  } else {
+    res.status(404).json({ error: 'API endpoint not found' });
   }
 });
 
@@ -110,7 +113,7 @@ app.get('*', (req, res) => {
 // =============================================================================
 
 io.on("connection", (socket) => {
-  console.log(`📱 Client connected: ${socket.id}`);
+  console.log(`Client connected: ${socket.id}`);
 
   // Join bus room
 
@@ -142,6 +145,7 @@ io.on("connection", (socket) => {
     console.log(`${socket.id} unsubscribed from notifications for user ${userId}`);
   });
 
+
   // Your device monitoring functionality
   socket.on('subscribe:device', (deviceKey) => {
     socket.join(`device:${deviceKey}`);
@@ -150,11 +154,28 @@ io.on("connection", (socket) => {
 
   socket.on('unsubscribe:device', (deviceKey) => {
     socket.leave(`device:${deviceKey}`);
+    console.log(`${socket.id} unsubscribed from device: ${deviceKey}`);
+  });
+
+  // Handle bus location updates from simulator
+  socket.on("busLocationUpdate", (busUpdate) => {
+    if (!busUpdate || !busUpdate.busId) {
+      console.warn("Invalid busLocationUpdate received");
+      return;
+    }
+
+    console.log(`Bus Location Update: ${busUpdate.busId} at (${busUpdate.location.lat.toFixed(6)}, ${busUpdate.location.lng.toFixed(6)})`);
+
+    // Broadcast to all clients subscribed to this bus
+    io.to(busUpdate.busId).emit("busLocationUpdate", busUpdate);
+    
+    // Also broadcast to all connected clients (for map views showing multiple buses)
+    io.emit("busLocationUpdate", busUpdate);
 
   });
 
   socket.on("disconnect", () => {
-    console.log(`📱 Client disconnected: ${socket.id}`);
+    console.log(`Client disconnected: ${socket.id}`);
   });
 });
 
@@ -166,18 +187,15 @@ setSocketIO(io);
 
 // Start servers
 const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => console.log(`Server running on  ${PORT}...${process.env.CORS_ORIGIN2}`));
-
 const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 1883;
 const MQTT_WS_PORT = parseInt(process.env.MQTT_WS_PORT) || 8083;
 
 server.listen(PORT, () => {
   console.log(`\n${'='.repeat(60)}`);
-  console.log('🚌 CTB Bus Monitoring System - Backend');
+  console.log('CTB Bus Monitoring System - Backend');
   console.log(`${'='.repeat(60)}`);
-  console.log(`📊 Dashboard:       http://localhost:${PORT}`);
-  console.log(`🔌 WebSocket:       ws://localhost:${PORT}`);
+  console.log(`Dashboard:       http://localhost:${PORT}`);
+  console.log(`WebSocket:       ws://localhost:${PORT}`);
   console.log(`${'='.repeat(60)}\n`);
 });
 
@@ -186,7 +204,7 @@ startMQTTBroker(MQTT_PORT, MQTT_WS_PORT);
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down...');
+  console.log('\n Shutting down...');
   server.close();
   process.exit(0);
 });
