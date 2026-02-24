@@ -1,11 +1,5 @@
-node_modules/
-.env
+
 firebase-service-account.json
-.DS_Store
-npm-debug.log
-logs/
-.cache/
-dist/
 coverage/
 passengerappresearch-firebase-adminsdk-fbsvc-64c688ba44.json
 
@@ -48,3 +42,130 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+device_venv/
+*/venv/
+
+# Python cache and build
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# Python test and coverage
+.pytest_cache/
+coverage/
+coverage.xml
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temporary files
+*.log
+*.sqlite3
+*.db
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+cache/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Models and large binaries
+models/
+old_models/
+*.pt
+*.onnx
+*.h5
+*.ckpt
+*.tflite
+*.pb
+
+# Device artifacts (examples)
+bestV8.pt
+roadObjectDetectionYoloV8.pt
+model-small.onnx
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Jupyter
+.ipynb_checkpoints
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.python-version
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Coverage and reports
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+
+# Misc
+.DS_Store
+Thumbs.db
+
+## Frontend specific ignores
+# Web frontend folders
+webfrontend/node_modules/
+webfrontend/build/
+webfrontend/dist/
+webfrontend/.env
+webfrontend/.env.local
+webfrontend/.cache/
+webfrontend/.vite/
+webfrontend/.parcel-cache/
+webfrontend/.next/
+webfrontend/out/
+webfrontend/.turbo/
+webfrontend/npm-debug.log*
+
+# Other frontend folder (if used)
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.cache/
+frontend/.vite/
+frontend/.parcel-cache/
+frontend/.next/
+frontend/out/
+frontend/npm-debug.log*
+
+# Ignore lockfiles generated during local dev if desired (optional)
+# package-lock.json
+# yarn.lock
