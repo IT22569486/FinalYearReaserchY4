@@ -1,9 +1,28 @@
-ultralytics>=8.0
+# Core inference (Raspberry Pi optimized)
+onnxruntime>=1.15.0
 opencv-python>=4.5.5
 numpy
-pygame>=2.0.0
-onnxruntime>=1.15.0
+
+# MQTT & system monitoring
 paho-mqtt>=1.6.0
 psutil>=5.9.0
+
+# Driver Monitoring System (DMS)
+mediapipe==0.10.14
+scipy>=1.10.0
+joblib>=1.2.0
+
+# Safe Speed Monitoring
+pandas>=1.5.0
+scikit-learn>=1.2.0
+lightgbm>=3.3.0
+requests>=2.28.0
+
+# Audio warnings (optional, for lane departure sound)
+pygame>=2.0.0
+
+# Optional – only needed on dev machine for model export / training
+# ultralytics>=8.0
+# tensorflow>=2.12.0
 
 

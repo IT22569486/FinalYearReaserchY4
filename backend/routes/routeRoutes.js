@@ -20,7 +20,7 @@ router.delete("/:id", routeController.deleteRoute);
 // /routes/search?start=...&destination=...
 router.get("/route/search", routeController.getRoutesByStops);
 
-// /routes/google/:id
-router.get("/google/:id", routeController.getGoogleRouteById);
+// /routes/google-route/:id
+router.get("/google-route/:id", routeController.getGoogleRouteById);
 
 module.exports = router;

@@ -1,0 +1,10 @@
+{
+  "camera_index": 0,
+  "frame_width": 640,
+  "frame_height": 480,
+  "send_interval_seconds": 2,
+  "show_gui": false,
+  "enable_phone_detection": true,
+  "enable_seatbelt_detection": true,
+  "enable_lstm_model": true
+}

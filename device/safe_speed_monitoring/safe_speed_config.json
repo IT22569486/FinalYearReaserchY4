@@ -1,0 +1,6 @@
+{
+    "vehicle_id": "BUS_001",
+    "route_id": "177_Kaduwela_Kollupitiya",
+    "send_interval_seconds": 5,
+    "openweather_api_key": ""
+}

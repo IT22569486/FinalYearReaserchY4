@@ -28,13 +28,22 @@ from pathlib import Path
 # Get the device directory
 DEVICE_DIR = Path(__file__).parent.absolute()
 
-# Import health monitor
+# Import shared config
 sys.path.insert(0, str(DEVICE_DIR))
+try:
+    from shared.config import DeviceConfig
+    _cfg = DeviceConfig()
+    CONFIG_AVAILABLE = True
+except ImportError:
+    _cfg = None
+    CONFIG_AVAILABLE = False
+
+# Import health monitor
 try:
     from device_health_monitor import DeviceHealthMonitor, get_health_monitor
     HEALTH_MONITOR_AVAILABLE = True
 except ImportError:
-    print("⚠️ Health monitor not available. Install: pip install paho-mqtt psutil")
+    print("WARNING: Health monitor not available.")
     HEALTH_MONITOR_AVAILABLE = False
 
 # Global health monitor instance (shared across components)
@@ -42,16 +51,14 @@ _health_monitor = None
 
 # =============================================================================
 # COMPONENT CONFIGURATION
-# Each team member should add their component here
-# Format: {
-#     'name': 'Component Name',
-#     'folder': 'folder_name',
-#     'script': 'main_script.py',
-#     'description': 'What this component does',
-#     'author': 'Your Name',
-#     'enabled': True/False
-# }
+# enabled state is read from device_config.json → components.<name>.enabled
 # =============================================================================
+
+def _is_enabled(component_key):
+    """Check if a component is enabled in device_config.json."""
+    if _cfg:
+        return _cfg.is_component_enabled(component_key)
+    return True  # default enabled when no config
 
 COMPONENTS = [
     {
@@ -60,28 +67,24 @@ COMPONENTS = [
         'script': 'object_distance_measurement.py',
         'description': 'Lane detection, object detection with depth estimation, ADAS warnings',
         'author': 'Sandaru Abey',
-        'enabled': True
+        'enabled': _is_enabled('context_aware_monitoring'),
     },
-    # =========================================================================
-    # ADD YOUR COMPONENTS BELOW
-    # =========================================================================
-    # Example:
-    # {
-    #     'name': 'Speed Monitoring',
-    #     'folder': 'speed_monitoring',
-    #     'script': 'main.py',
-    #     'description': 'GPS-based speed monitoring and violation detection',
-    #     'author': 'Friend 1',
-    #     'enabled': True
-    # },
-    # {
-    #     'name': 'Passenger Counting',
-    #     'folder': 'passenger_counting',
-    #     'script': 'main.py',
-    #     'description': 'Camera-based passenger counting system',
-    #     'author': 'Friend 2',
-    #     'enabled': True
-    # },
+    {
+        'name': 'Safe Speed Monitoring',
+        'folder': 'safe_speed_monitoring',
+        'script': 'safe_speed_monitor.py',
+        'description': 'ML-based safe speed prediction and fleet telemetry via MQTT',
+        'author': 'Sachith',
+        'enabled': _is_enabled('safe_speed_monitoring'),
+    },
+    {
+        'name': 'Driver Monitoring',
+        'folder': 'driver_monitoring',
+        'script': 'driver_monitor.py',
+        'description': 'Drowsiness, distraction, phone use, seatbelt & hands-off-wheel detection',
+        'author': 'Drowsiness Team',
+        'enabled': _is_enabled('driver_monitoring'),
+    },
 ]
 
 
@@ -104,19 +107,17 @@ def init_backend_connection():
     
     try:
         print("\n" + "=" * 60)
-        print("🔌 CONNECTING TO CTB BACKEND")
+        print("CONNECTING TO CTB BACKEND")
         print("=" * 60)
         
-        # Load config
-        config_path = DEVICE_DIR / 'device_config.json'
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            print(f"   Bus Number: {config.get('bus_number', 'N/A')}")
-            print(f"   Route: {config.get('route_number', 'N/A')}")
-            print(f"   MQTT Broker: {config.get('mqtt_broker', 'localhost')}:{config.get('mqtt_port', 1883)}")
+        # Use shared config
+        if _cfg:
+            print(f"   Bus Number: {_cfg.bus_number}")
+            print(f"   Route: {_cfg.route_number}")
+            print(f"   MQTT Broker: {_cfg.mqtt_broker}:{_cfg.mqtt_port}")
         
-        # Initialize health monitor (pass config_path as keyword argument)
+        # Initialize health monitor
+        config_path = DEVICE_DIR / 'device_config.json'
         _health_monitor = get_health_monitor(config_path=str(config_path))
         
         print(f"   Device Key: {_health_monitor.device_key}")

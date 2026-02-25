@@ -19,6 +19,7 @@ async function createUser(userData) {
     name: userData.name,
     email: userData.email,
     password: hashedPassword,
+    role: userData.role || "user",
     createdAt: new Date(),
   };
 

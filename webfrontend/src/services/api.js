@@ -1,70 +1,98 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+// CRA uses proxy from package.json for development
+// In production, set REACT_APP_API_URL environment variable
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Device APIs
-export const deviceApi = {
-  // Get all devices
-  getAllDevices: () => api.get('/devices'),
-  
-  // Get single device by key
-  getDevice: (deviceKey) => api.get(`/devices/${deviceKey}`),
-  
-  // Get device health logs
-  getDeviceHealth: (deviceKey, limit = 50) => 
-    api.get(`/devices/${deviceKey}/health?limit=${limit}`),
-  
-  // Register new device
-  registerDevice: (deviceData) => api.post('/devices', deviceData),
-  
-  // Update device info
-  updateDevice: (deviceKey, deviceData) => api.put(`/devices/${deviceKey}`, deviceData),
-  
-  // Delete device
-  deleteDevice: (deviceKey) => api.delete(`/devices/${deviceKey}`),
-};
+// Fleet API Services
+export const fleetService = {
+  // Get fleet overview statistics
+  getOverview: async () => {
+    const response = await api.get('/api/fleet/overview');
+    return response.data;
+  },
 
-// Violation APIs
-export const violationApi = {
-  // Get all violations
-  getAllViolations: (limit = 100) => api.get(`/violations?limit=${limit}`),
-  
-  // Get violations by device
-  getViolationsByDevice: (deviceKey, limit = 50) => 
-    api.get(`/violations/device/${deviceKey}?limit=${limit}`),
-  
-  // Get violation by ID
-  getViolation: (violationId) => api.get(`/violations/${violationId}`),
-};
+  // Get all buses
+  getAllBuses: async () => {
+    const response = await api.get('/api/fleet/buses');
+    return response.data;
+  },
 
-// Bus APIs (from team's backend)
-export const busApi = {
-  getAllBuses: () => api.get('/bus'),
-  getBus: (busId) => api.get(`/bus/${busId}`),
-  createBus: (busData) => api.post('/bus', busData),
-  updateBus: (busId, busData) => api.put(`/bus/${busId}`, busData),
-  deleteBus: (busId) => api.delete(`/bus/${busId}`),
-};
+  // Get specific bus details
+  getBusDetails: async (vehicleId) => {
+    const response = await api.get(`/api/fleet/buses/${vehicleId}`);
+    return response.data;
+  },
 
-// Trip APIs (from team's backend)
-export const tripApi = {
-  getAllTrips: () => api.get('/trip'),
-  getTrip: (tripId) => api.get(`/trip/${tripId}`),
-  createTrip: (tripData) => api.post('/trip', tripData),
-  updateTrip: (tripId, tripData) => api.put(`/trip/${tripId}`, tripData),
-};
+  // Get bus history
+  getBusHistory: async (vehicleId, hours = 24, limit = 100) => {
+    const response = await api.get(`/api/fleet/buses/${vehicleId}/history`, {
+      params: { hours, limit }
+    });
+    return response.data;
+  },
 
-// Route APIs (from team's backend)
-export const routeApi = {
-  getAllRoutes: () => api.get('/routes'),
-  getRoute: (routeId) => api.get(`/routes/${routeId}`),
+  // Get map data
+  getMapData: async () => {
+    const response = await api.get('/api/fleet/map-data');
+    return response.data;
+  },
+
+  // Get routes
+  getRoutes: async () => {
+    const response = await api.get('/api/fleet/routes');
+    return response.data;
+  },
+
+  // Get statistics
+  getStatistics: async () => {
+    const response = await api.get('/api/fleet/statistics');
+    return response.data;
+  },
+
+  // Health check
+  healthCheck: async () => {
+    const response = await api.get('/api/health');
+    return response.data;
+  }
 };
 
 export default api;
+
+// Driver Monitoring System (DMS) API Services
+export const dmsService = {
+  // Get latest state for all devices
+  getStatus: async () => {
+    const response = await api.get('/api/dms/status');
+    return response.data;
+  },
+
+  // Get state for a specific device
+  getDeviceStatus: async (deviceKey) => {
+    const response = await api.get(`/api/dms/status/${deviceKey}`);
+    return response.data;
+  },
+
+  // Get recent DMS events
+  getEvents: async (deviceKey = null, limit = 50) => {
+    const params = {};
+    if (deviceKey) params.device_key = deviceKey;
+    if (limit) params.limit = limit;
+    const response = await api.get('/api/dms/events', { params });
+    return response.data;
+  },
+
+  // Get DMS statistics
+  getStatistics: async (hours = 24) => {
+    const response = await api.get('/api/dms/statistics', { params: { hours } });
+    return response.data;
+  },
+};

@@ -24,6 +24,7 @@ const handleRegisterUser = async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role || "user",
       token: generateToken(user.id),
     });
   } catch (error) {
@@ -44,6 +45,7 @@ const handleLoginUser = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role || "user",
         token: generateToken(user.id),
       });
     } else {
@@ -57,8 +59,9 @@ const handleLoginUser = async (req, res) => {
 // Get user profile
 // GET /api/users/profile
 const handleGetUserProfile = async (req, res) => {
-  // req.user is attached by the auth middleware
-  res.status(200).json(req.user);
+  // Ensure we don't send back the password
+  const { password, ...userProfile } = req.user._doc ? req.user._doc : req.user;
+  res.status(200).json(userProfile);
 };
 
 module.exports = {

@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Context-Aware Road Object Detection with Distance Measurement.
+
+YOLOv8 + MiDaS Depth Estimation for CTB Bus Rule Violation Detection.
+
+Optimizations for Raspberry Pi:
+  - Prefers ONNX models (via shared OnnxYOLO) over ultralytics
+  - All settings loaded from device_config.json (no input() prompts)
+  - Supports adaptive processing for frame skipping / resolution scaling
+"""
 
 import sys
 import time
@@ -11,10 +21,48 @@ import numpy as np
 SCRIPT_DIR = Path(__file__).parent.absolute()
 MODELS_DIR = SCRIPT_DIR / 'models'
 ASSETS_DIR = SCRIPT_DIR / 'assets'
+DEVICE_DIR = SCRIPT_DIR.parent  # device/ folder
 
+# Add device dir for shared imports
+if str(DEVICE_DIR) not in sys.path:
+    sys.path.insert(0, str(DEVICE_DIR))
+
+# ---------------------------------------------------------------------------
+# Shared config
+# ---------------------------------------------------------------------------
+from shared.config import DeviceConfig
+
+_cfg = DeviceConfig()
+_comp = _cfg.get_component_config("context_aware_monitoring")
+
+USE_ONNX = _comp.get("use_onnx", True)
+ENABLE_LANE = _comp.get("enable_lane_detection", True)
+ENABLE_BEHAVIOR = _comp.get("enable_behavior_analysis", True)
+SHOW_GUI = _comp.get("show_gui", True)
+VIDEO_SOURCE = _comp.get("video_source", "0")   # "0" = webcam, or path
+YOLO_IMGSZ = _comp.get("yolo_imgsz", 384)
+DEPTH_INPUT_SIZE = tuple(_comp.get("depth_input_size", [256, 256]))
+VEHICLE_SPEED_KMH = _cfg.get("vehicle_speed_kmh", 40)
+
+# ---------------------------------------------------------------------------
+# ONNX YOLO wrapper (preferred) or ultralytics fallback
+# ---------------------------------------------------------------------------
+ONNX_YOLO_AVAILABLE = False
+try:
+    from shared.onnx_yolo import OnnxYOLO
+    ONNX_YOLO_AVAILABLE = True
+except ImportError:
+    pass
+
+ULTRALYTICS_AVAILABLE = False
 try:
     from ultralytics import YOLO
+    ULTRALYTICS_AVAILABLE = True
 except ImportError:
+    pass
+
+if not ONNX_YOLO_AVAILABLE and not ULTRALYTICS_AVAILABLE:
+    print("ERROR: Need either onnxruntime (onnx_yolo) or ultralytics for YOLO.")
     sys.exit(1)
 
 try:
@@ -22,15 +70,8 @@ try:
     ONNX_AVAILABLE = True
 except ImportError:
     ONNX_AVAILABLE = False
+    print("ERROR: onnxruntime required for MiDaS depth estimation.")
     sys.exit(1)
-
-# Import Device Health Monitor for CTB IoT system
-# Need to add parent directory to path since device_health_monitor.py is in parent folder
-import sys
-from pathlib import Path
-DEVICE_DIR = Path(__file__).parent.parent  # device/ folder
-if str(DEVICE_DIR) not in sys.path:
-    sys.path.insert(0, str(DEVICE_DIR))
 
 try:
     from device_health_monitor import get_health_monitor
@@ -220,97 +261,94 @@ class ObjectProximityAnalyzer:
 
 
 def main():
-    """Main application"""
+    """Main application — fully auto-configured from device_config.json."""
     print("=" * 60)
     print("Road Object Detection with Distance Measurement")
     print("YOLOv8 + MiDaS Depth Estimation")
     print("CTB Bus Rule Violation Detection System")
+    print(f"Config: bus={_cfg.bus_number}  route={_cfg.route_number}")
+    print(f"ONNX={USE_ONNX}  lane={ENABLE_LANE}  behavior={ENABLE_BEHAVIOR}  gui={SHOW_GUI}")
     print("=" * 60)
     
     # Initialize Health Monitor for violation reporting
-    # Each process now has unique MQTT client ID (device_key + process_id)
     health_monitor = None
-    device_config_path = str(DEVICE_DIR / 'device_config.json')  # Use parent folder config
     if HEALTH_MONITOR_AVAILABLE:
-        health_monitor = get_health_monitor(config_path=device_config_path)
+        health_monitor = get_health_monitor(config_path=str(DEVICE_DIR / 'device_config.json'))
         if not health_monitor.running:
             health_monitor.start()
-        print(f" Violation reporter ready (Device: {health_monitor.device_key})")
+        print(f"  Violation reporter ready (Device: {health_monitor.device_key})")
     
-    # Get object detection model
-    print("\n[1] Object Detection Model")
-    default_obj_model = str(MODELS_DIR / 'roadObjectDetectionYoloV8.pt')
-    obj_model_path = input(f"Enter YOLOv8 object detection model path (default: {default_obj_model}): ").strip()
-    if not obj_model_path:
-        obj_model_path = default_obj_model
-    
-    while not Path(obj_model_path).exists():
-        print(f"Model not found: {obj_model_path}")
-        obj_model_path = input("Enter valid model path (or 'q' to quit): ").strip()
-        if obj_model_path.lower() == 'q':
-            return
-    
-    print(f"Loading object detection model: {obj_model_path}")
-    obj_model = YOLO(obj_model_path)
-    
-    try:
+    # ---- Object Detection Model ----
+    obj_model = None
+    obj_names = {}
+
+    # Try ONNX first, then ultralytics .pt
+    onnx_obj = MODELS_DIR / 'roadObjectDetectionYoloV8.onnx'
+    pt_obj = MODELS_DIR / 'roadObjectDetectionYoloV8.pt'
+
+    if USE_ONNX and ONNX_YOLO_AVAILABLE and onnx_obj.exists():
+        obj_model = OnnxYOLO(str(onnx_obj), imgsz=YOLO_IMGSZ)
         obj_names = obj_model.names
-        print(f"Object classes: {obj_names}")
-    except:
+        print(f"  Object model loaded (ONNX): {onnx_obj.name}")
+    elif ULTRALYTICS_AVAILABLE and pt_obj.exists():
+        obj_model = YOLO(str(pt_obj))
+        obj_names = obj_model.names
+        print(f"  Object model loaded (.pt fallback): {pt_obj.name}")
+    else:
+        print("ERROR: Object detection model not found.")
+        return
+
+    if not obj_names:
         obj_names = {i: str(i) for i in range(100)}
-    
     obj_palette = get_palette(len(obj_names))
     
-    # Get depth model
-    print("\n[2] Depth Estimation Model")
-    default_depth_model = str(MODELS_DIR / 'model-small.onnx')
-    depth_model_path = input(f"Enter MiDaS ONNX model path (default: {default_depth_model}): ").strip()
-    if not depth_model_path:
-        depth_model_path = default_depth_model
-    
-    depth_estimator = MiDaSDepth(model_path=depth_model_path, input_size=(256, 256))
+    # ---- Depth Model ----
+    depth_model_path = str(MODELS_DIR / 'model-small.onnx')
+    depth_estimator = MiDaSDepth(model_path=depth_model_path, input_size=DEPTH_INPUT_SIZE)
     
     if depth_estimator.session is None:
-        print("❌ Failed to load depth model. Cannot analyze proximity.")
+        print("ERROR: Failed to load depth model.")
         return
     
-    # Initialize proximity analyzer using depth map brightness
+    # ---- Proximity analyzer ----
     proximity_analyzer = ObjectProximityAnalyzer()
     
-    # Get lane detection model (optional)
-    print("\n[Lane Detection - Optional]")
-    use_lane = input("Enable lane detection and ADAS warnings? [y/N]: ").strip().lower()
+    # ---- Lane Detection Model (optional) ----
     lane_model = None
     lane_names = None
     lane_palette = None
-    SOLID_LANE_IDS = [4, 5, 6, 7, 8]  # solid lanes for warnings
+    SOLID_LANE_IDS = [4, 5, 6, 7, 8]
     
-    if use_lane == 'y':
-        default_lane_model = str(MODELS_DIR / 'rlmdFilteredModelNov9.pt')
-        lane_model_path = input(f"Enter lane detection model path (default: {default_lane_model}): ").strip()
-        if not lane_model_path:
-            lane_model_path = default_lane_model
-        
-        if Path(lane_model_path).exists():
-            print(f"Loading lane detection model: {lane_model_path}")
-            lane_model = YOLO(lane_model_path)
+    if ENABLE_LANE:
+        onnx_lane = MODELS_DIR / 'rlmdFilteredModelNov9.onnx'
+        pt_lane = MODELS_DIR / 'rlmdFilteredModelNov9.pt'
+
+        if USE_ONNX and ONNX_YOLO_AVAILABLE and onnx_lane.exists():
+            lane_model = OnnxYOLO(str(onnx_lane), imgsz=YOLO_IMGSZ)
+            lane_names = lane_model.names
+            print(f"  Lane model loaded (ONNX): {onnx_lane.name}")
+        elif ULTRALYTICS_AVAILABLE and pt_lane.exists():
+            lane_model = YOLO(str(pt_lane))
             try:
                 lane_names = lane_model.names
-                print(f"Lane classes: {lane_names}")
             except:
                 lane_names = {i: str(i) for i in range(100)}
-            lane_palette = get_palette(len(lane_names))
+            print(f"  Lane model loaded (.pt fallback): {pt_lane.name}")
         else:
-            print(f"Lane model not found: {lane_model_path}")
-            lane_model = None
+            print("  Lane model not found — lane detection disabled")
+
+        if lane_model and not lane_names:
+            lane_names = {i: str(i) for i in range(100)}
+        if lane_model:
+            lane_palette = get_palette(len(lane_names))
     
-    # Initialize Lane Memory Tracker
+    # ---- Lane Memory Tracker ----
     lane_tracker = None
     if lane_model is not None and LANE_MEMORY_AVAILABLE:
         lane_tracker = LaneMemoryTracker(max_history=30, decay_rate=0.95, smoothing_factor=0.3)
-        print(" Lane Memory Tracker initialized")
+        print("  Lane Memory Tracker initialized")
     
-    # Audio warnings for lanes
+    # ---- Audio warnings ----
     warning_sound = None
     if lane_model is not None:
         try:
@@ -319,64 +357,33 @@ def main():
             audio_path = str(ASSETS_DIR / 'microwave-oven-beeps-36087.mp3')
             if Path(audio_path).exists():
                 warning_sound = pygame.mixer.Sound(audio_path)
-                print(f" Audio warning loaded: {audio_path}")
         except:
-            print("Audio warnings disabled")
+            pass
     
     last_warning_time = 0
     warning_cooldown = 2.0
     proximity_threshold = 100
     
-    # Wrong-side driving detection (Option 1: Lane geometry based)
-    wrong_side_start_time = None  # When wrong-side driving started
-    WRONG_SIDE_DURATION_THRESHOLD = 3.0  # Must be on wrong side for 3 seconds to trigger
+    wrong_side_start_time = None
+    WRONG_SIDE_DURATION_THRESHOLD = 3.0
     wrong_side_warning_active = False
     
-    # Get health_monitor for violation reporting
-    health_monitor = None
-    if HEALTH_MONITOR_AVAILABLE:
-        # Use config from parent device/ folder to avoid creating duplicate device
-        config_path = str(DEVICE_DIR / 'device_config.json')
-        health_monitor = get_health_monitor(config_path=config_path)
-        print(f" Health monitor available for violation reporting (config: {config_path})")
-    
-    # Initialize Driver Behavior Analyzer
+    # ---- Driver Behavior Analyzer ----
     behavior_analyzer = None
-    vehicle_speed = 0
-    if BEHAVIOR_ANALYZER_AVAILABLE:
-        print("\n[Driver Behavior Analysis]")
-        enable_behavior = input("Enable driver behavior analysis? [Y/n]: ").strip().lower()
-        if enable_behavior != 'n':
-            behavior_analyzer = DriverBehaviorAnalyzer(health_monitor=health_monitor)
-            
-            # Get vehicle speed for simulation
-            speed_input = input("Enter simulated vehicle speed (km/h, default: 40): ").strip()
-            try:
-                vehicle_speed = float(speed_input) if speed_input else 40
-            except ValueError:
-                vehicle_speed = 40
-            
-            behavior_analyzer.set_speed(vehicle_speed)
-            print(f"   Vehicle speed set to: {vehicle_speed} km/h")
+    vehicle_speed = VEHICLE_SPEED_KMH
+    if ENABLE_BEHAVIOR and BEHAVIOR_ANALYZER_AVAILABLE:
+        behavior_analyzer = DriverBehaviorAnalyzer(health_monitor=health_monitor)
+        behavior_analyzer.set_speed(vehicle_speed)
+        print(f"  Behavior analyzer ready  speed={vehicle_speed} km/h")
     
-    # Get video input
-    print("\n[3] Video Input")
-    video_path = input("Enter video path (or '0' for webcam): ").strip()
-    if not video_path:
-        print("No video provided")
-        return
-    
-    if video_path != '0':
-        while not Path(video_path).exists():
-            print(f"Video not found: {video_path}")
-            video_path = input("Enter valid video path (or 'q' to quit): ").strip()
-            if video_path.lower() == 'q':
-                return
-    
-    # Open video
+    # ---- Video Input ----
+    video_path = VIDEO_SOURCE
     if video_path == '0':
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(_cfg.camera_index)
     else:
+        if not Path(video_path).exists():
+            print(f"ERROR: Video not found: {video_path}")
+            return
         cap = cv2.VideoCapture(video_path)
     
     if not cap.isOpened():
@@ -392,14 +399,11 @@ def main():
     
     # Initialize Adaptive Processor for performance optimizations
     adaptive_processor = None
-    if ADAPTIVE_PROCESSOR_AVAILABLE:
-        print("\n[4] Adaptive Processing Optimization")
-        enable_adaptive = input("Enable adaptive processing optimization? [Y/n]: ").strip().lower()
-        if enable_adaptive != 'n':
-            adaptive_processor = AdaptiveProcessor(width, height)
-            adaptive_processor.set_speed(vehicle_speed)  # Use the speed from behavior analyzer
-            print(f" Adaptive processor enabled (Speed: {vehicle_speed} km/h)")
-            print("   Optimizations: Frame skip, Conditional MiDaS, ROI crop, Resolution scaling, Similarity skip")
+    enable_adaptive = _comp.get("enable_adaptive_processing", True)
+    if ADAPTIVE_PROCESSOR_AVAILABLE and enable_adaptive:
+        adaptive_processor = AdaptiveProcessor(width, height)
+        adaptive_processor.set_speed(vehicle_speed)
+        print(f"  Adaptive processor enabled (Speed: {vehicle_speed} km/h)")
     
     print(f"\nProcessing... Press 'q' to quit\n")
     
@@ -501,14 +505,31 @@ def main():
             # RUN OBJECT DETECTION (conditional)
             # =====================================================================
             if should_run_yolo:
-                # Use fixed low resolution for FAST inference (YOLO handles resize)
-                # 320 is fast, 416 is balanced, 640 is slow but accurate
-                infer_size = 384  # Balance between speed and accuracy
+                infer_size = YOLO_IMGSZ
                 
-                obj_results = obj_model(processing_frame, conf=0.4, imgsz=infer_size)
-                obj_res = obj_results[0]
+                if ONNX_YOLO_AVAILABLE and isinstance(obj_model, OnnxYOLO):
+                    # OnnxYOLO path
+                    _boxes, _scores, _cls_ids = obj_model.detect(
+                        processing_frame, conf=0.4)
+                    # Build a simple result object compatible with the rest of the loop
+                    obj_res = type('R', (), {
+                        'boxes': type('B', (), {
+                            'xyxy': np.array(_boxes) if len(_boxes) > 0 else np.empty((0,4)),
+                            'cls': np.array(_cls_ids),
+                            'conf': np.array(_scores),
+                            '__len__': lambda s: len(_scores),
+                        })() if len(_scores) > 0 else None,
+                    })()
+                    # Make len() work on boxes
+                    if obj_res.boxes is not None:
+                        obj_res.boxes.__class__.__len__ = lambda s: len(_scores)
+                else:
+                    # ultralytics path
+                    obj_results = obj_model(processing_frame, conf=0.4, imgsz=infer_size)
+                    obj_res = obj_results[0]
+
                 cached_obj_res = obj_res
-                yolo_runs_count += 1  # Track YOLO runs
+                yolo_runs_count += 1
                 
                 # Update adaptive processor with detection state
                 if adaptive_processor is not None:
@@ -520,9 +541,27 @@ def main():
             detected_lane_masks = []  # Collect lane info for memory tracker
             
             if lane_model is not None and should_run_lane:
-                # Use fixed low resolution for lane detection too
-                lane_results = lane_model(processing_frame, conf=0.4, imgsz=384)
-                lane_res = lane_results[0]
+                if ONNX_YOLO_AVAILABLE and isinstance(lane_model, OnnxYOLO):
+                    # OnnxYOLO doesn't produce segmentation masks.
+                    # For lane detection we still need ultralytics if available,
+                    # since lane model uses segmentation output.
+                    # Fall through to .pt if masks are needed.
+                    if ULTRALYTICS_AVAILABLE:
+                        _lane_pt = MODELS_DIR / 'rlmdFilteredModelNov9.pt'
+                        if _lane_pt.exists() and not hasattr(main, '_lane_pt_model'):
+                            main._lane_pt_model = YOLO(str(_lane_pt))
+                        if hasattr(main, '_lane_pt_model'):
+                            lane_results = main._lane_pt_model(processing_frame, conf=0.4, imgsz=YOLO_IMGSZ)
+                            lane_res = lane_results[0]
+                        else:
+                            lane_res = None
+                    else:
+                        lane_res = None
+                elif ULTRALYTICS_AVAILABLE and lane_model is not None:
+                    lane_results = lane_model(processing_frame, conf=0.4, imgsz=YOLO_IMGSZ)
+                    lane_res = lane_results[0]
+                else:
+                    lane_res = None
                 cached_lane_res = lane_res
             elif lane_model is not None and not should_run_lane:
                 lane_res = cached_lane_res
@@ -824,17 +863,26 @@ def main():
             # Draw object detection with proximity analysis
             detected_objects = []  # Collect objects for behavior analyzer
             
-            if depth_map is not None and depth_colored is not None and obj_res.boxes is not None:
+            if depth_map is not None and depth_colored is not None and obj_res is not None and obj_res.boxes is not None:
                 boxes = obj_res.boxes
                 
                 # Convert depth_colored to grayscale for brightness analysis
                 depth_gray = cv2.cvtColor(depth_colored, cv2.COLOR_BGR2GRAY)
                 
-                for i in range(len(boxes)):
-                    # Get box info
-                    bbox = boxes.xyxy[i].cpu().numpy()
-                    cls = int(boxes.cls[i].cpu().numpy())
-                    conf = float(boxes.conf[i].cpu().numpy())
+                # Support both numpy arrays (OnnxYOLO) and tensors (ultralytics)
+                _xyxy = boxes.xyxy if not isinstance(boxes.xyxy, np.ndarray) else boxes.xyxy
+                _cls = boxes.cls if not isinstance(boxes.cls, np.ndarray) else boxes.cls
+                _conf = boxes.conf if not isinstance(boxes.conf, np.ndarray) else boxes.conf
+                num_boxes = len(_cls) if hasattr(_cls, '__len__') else 0
+
+                for i in range(num_boxes):
+                    # Get box info — handle both numpy and tensor
+                    try:
+                        bbox = _xyxy[i].cpu().numpy() if hasattr(_xyxy[i], 'cpu') else np.array(_xyxy[i])
+                        cls = int(_cls[i].cpu().numpy() if hasattr(_cls[i], 'cpu') else _cls[i])
+                        conf = float(_conf[i].cpu().numpy() if hasattr(_conf[i], 'cpu') else _conf[i])
+                    except Exception:
+                        continue
                     
                     x1, y1, x2, y2 = map(int, bbox)
                     

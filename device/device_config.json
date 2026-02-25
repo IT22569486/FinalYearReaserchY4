@@ -1,11 +1,59 @@
 {
   "bus_number": "NA-2255",
   "route_number": "171",
+  "vehicle_id": "NA-2255",
+  "route_id": "177_Kaduwela_Kollupitiya",
+  "device_key": "CTB-B89A2A4BFD2E-4D73EAD0",
+
   "mqtt_broker": "localhost",
   "mqtt_port": 1883,
   "mqtt_username": "",
   "mqtt_password": "",
   "mqtt_topic_base": "ctb/bus",
+
   "health_interval_seconds": 30,
-  "device_key": "CTB-B89A2A4BFD2E-4D73EAD0"
+  "send_interval_seconds": 5,
+  "vehicle_speed_kmh": 40,
+
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "fps": 15
+  },
+
+  "gps": {
+    "enabled": false,
+    "simulation": true,
+    "serial_port": "/dev/ttyUSB0",
+    "baud_rate": 9600
+  },
+
+  "openweather_api_key": "",
+
+  "components": {
+    "context_aware_monitoring": {
+      "enabled": true,
+      "use_onnx": true,
+      "enable_lane_detection": true,
+      "enable_behavior_analysis": true,
+      "enable_adaptive_processing": true,
+      "show_gui": true,
+      "video_source": "C:\\uni\\DashCamUpdate.mp4",
+      "yolo_imgsz": 384,
+      "depth_input_size": [256, 256]
+    },
+    "safe_speed_monitoring": {
+      "enabled": true
+    },
+    "driver_monitoring": {
+      "enabled": true,
+      "use_onnx": true,
+      "show_gui": true,
+      "enable_phone_detection": true,
+      "enable_seatbelt_detection": true,
+      "enable_lstm_model": false,
+      "yolo_imgsz": 320
+    }
+  }
 }
