@@ -99,7 +99,7 @@ def init_backend_connection():
     global _health_monitor
     
     if not HEALTH_MONITOR_AVAILABLE:
-        print("⚠️ Cannot connect to backend - health monitor not available")
+        print(" Cannot connect to backend - health monitor not available")
         return None
     
     try:
@@ -129,10 +129,10 @@ def init_backend_connection():
         time.sleep(2)
         
         if _health_monitor.is_connected:
-            print("✅ Connected to backend!")
+            print(" Connected to backend!")
             print(f"   Queue Size: {_health_monitor.offline_queue.size()} messages")
         else:
-            print("⚠️ Not connected yet - messages will be queued offline")
+            print(" Not connected yet - messages will be queued offline")
             print(f"   Queue Size: {_health_monitor.offline_queue.size()} messages")
         
         print("=" * 60 + "\n")
@@ -165,7 +165,7 @@ def update_component_status(component_name, status='running', details=None):
                 }
             )
         except Exception as e:
-            print(f"⚠️ Failed to update component status: {e}")
+            print(f" Failed to update component status: {e}")
 
 
 def list_components():
@@ -176,17 +176,17 @@ def list_components():
     
     # Show backend connection status
     if _health_monitor:
-        status = "🟢 Connected" if _health_monitor.is_connected else "🟡 Offline (Queued)"
+        status = " Connected" if _health_monitor.is_connected else " Offline (Queued)"
         print(f"\nBackend Status: {status}")
         print(f"Device Key: {_health_monitor.device_key}")
         print(f"Queue: {_health_monitor.offline_queue.size()} messages")
     else:
-        print(f"\nBackend Status: ❌ Not Connected")
+        print(f"\nBackend Status: Not Connected")
     
     for i, comp in enumerate(COMPONENTS, 1):
-        status = "✅ ENABLED" if comp['enabled'] else "❌ DISABLED"
+        status = "ENABLED" if comp['enabled'] else "DISABLED"
         folder_path = DEVICE_DIR / comp['folder']
-        exists = "📁 Found" if folder_path.exists() else "⚠️ Not Found"
+        exists = " Found" if folder_path.exists() else " Not Found"
         
         print(f"\n[{i}] {comp['name']} ({status})")
         print(f"    Folder: {comp['folder']}/ ({exists})")
@@ -206,15 +206,15 @@ def run_component(component, python_exe):
     script_path = folder_path / component['script']
     
     if not folder_path.exists():
-        print(f"❌ Component folder not found: {folder_path}")
+        print(f" Component folder not found: {folder_path}")
         return False
     
     if not script_path.exists():
-        print(f"❌ Script not found: {script_path}")
+        print(f" Script not found: {script_path}")
         return False
     
     print(f"\n{'=' * 50}")
-    print(f"🚀 Starting: {component['name']}")
+    print(f" Starting: {component['name']}")
     print(f"   Script: {script_path}")
     print(f"{'=' * 50}\n")
     
@@ -236,7 +236,7 @@ def run_component(component, python_exe):
         
         return process
     except Exception as e:
-        print(f"❌ Failed to start {component['name']}: {e}")
+        print(f" Failed to start {component['name']}: {e}")
         update_component_status(component['name'], 'error', {'error': str(e)})
         return None
 
@@ -257,7 +257,7 @@ def run_single_component(component_name, use_mqtt=True):
             break
     
     if component is None:
-        print(f"❌ Component not found: {component_name}")
+        print(f" Component not found: {component_name}")
         print("\nAvailable components:")
         for comp in COMPONENTS:
             print(f"  - {comp['name']} ({comp['folder']})")
@@ -269,7 +269,7 @@ def run_single_component(component_name, use_mqtt=True):
             process.wait()
             update_component_status(component['name'], 'stopped')
         except KeyboardInterrupt:
-            print(f"\n⏹️ Stopping {component['name']}...")
+            print(f"\n Stopping {component['name']}...")
             update_component_status(component['name'], 'stopped')
             process.terminate()
         finally:
@@ -287,20 +287,20 @@ def run_all_components(use_mqtt=True):
     enabled_components = [c for c in COMPONENTS if c['enabled']]
     
     if not enabled_components:
-        print("❌ No enabled components found!")
+        print(" No enabled components found!")
         return
     
     print("\n" + "=" * 70)
-    print("🚌 CTB BUS RULE VIOLATION DETECTION SYSTEM")
+    print(" CTB BUS RULE VIOLATION DETECTION SYSTEM")
     print("=" * 70)
     
     # Show connection status
     if _health_monitor:
-        status = "🟢 Connected" if _health_monitor.is_connected else "🟡 Offline Mode"
+        status = " Connected" if _health_monitor.is_connected else " Offline Mode"
         print(f"Backend: {status}")
         print(f"Device Key: {_health_monitor.device_key}")
     
-    print(f"\n🚀 Starting {len(enabled_components)} component(s)...\n")
+    print(f"\n Starting {len(enabled_components)} component(s)...\n")
     
     processes = []
     
@@ -311,10 +311,10 @@ def run_all_components(use_mqtt=True):
             time.sleep(1)  # Small delay between starting components
     
     if not processes:
-        print("❌ No components started successfully!")
+        print(" No components started successfully!")
         return
     
-    print(f"\n✅ {len(processes)} component(s) running")
+    print(f"\n {len(processes)} component(s) running")
     print("Press Ctrl+C to stop all components\n")
     
     try:
@@ -331,7 +331,7 @@ def run_all_components(use_mqtt=True):
             time.sleep(1)
     
     except KeyboardInterrupt:
-        print("\n\n⏹️ Stopping all components...")
+        print("\n\n Stopping all components...")
         for name, proc in processes:
             print(f"   Stopping {name}...")
             update_component_status(name, 'stopped')
@@ -341,7 +341,7 @@ def run_all_components(use_mqtt=True):
         for name, proc in processes:
             proc.wait()
         
-        print("✅ All components stopped\n")
+        print(" All components stopped\n")
     
     finally:
         shutdown_backend()
@@ -356,9 +356,9 @@ def shutdown_backend():
             print("📡 Disconnecting from backend...")
             _health_monitor.stop()
             _health_monitor = None
-            print("✅ Backend disconnected")
+            print(" Backend disconnected")
         except Exception as e:
-            print(f"⚠️ Error disconnecting: {e}")
+            print(f" Error disconnecting: {e}")
 
 
 def interactive_menu(use_mqtt=True):
@@ -371,16 +371,16 @@ def interactive_menu(use_mqtt=True):
     try:
         while True:
             print("\n" + "=" * 50)
-            print("🚌 CTB BUS VIOLATION DETECTION SYSTEM")
+            print(" CTB BUS VIOLATION DETECTION SYSTEM")
             print("=" * 50)
             
             # Show connection status
             if _health_monitor:
-                status = "🟢 Connected" if _health_monitor.is_connected else "🟡 Offline"
+                status = " Connected" if _health_monitor.is_connected else " Offline"
                 queue_size = _health_monitor.offline_queue.size()
                 print(f"Backend: {status} | Queue: {queue_size}")
             else:
-                print("Backend: ❌ Not Connected")
+                print("Backend:  Not Connected")
             
             print("\n[1] Run all enabled components")
             print("[2] Run specific component")
@@ -403,7 +403,7 @@ def interactive_menu(use_mqtt=True):
             elif choice == '4':
                 show_backend_status()
             elif choice == '5':
-                print("Goodbye! 👋")
+                print("Goodbye! ")
                 break
             else:
                 print("Invalid option. Please try again.")
@@ -419,14 +419,14 @@ def show_backend_status():
     print("=" * 50)
     
     if not _health_monitor:
-        print("❌ Health monitor not initialized")
+        print(" Health monitor not initialized")
         return
     
     print(f"Device Key: {_health_monitor.device_key}")
     print(f"Bus Number: {_health_monitor.bus_number}")
     print(f"Route: {_health_monitor.route_number}")
     print(f"MQTT Broker: {_health_monitor.mqtt_broker}:{_health_monitor.mqtt_port}")
-    print(f"Connected: {'Yes ✅' if _health_monitor.is_connected else 'No ❌'}")
+    print(f"Connected: {'Yes ' if _health_monitor.is_connected else 'No '}")
     print(f"Offline Queue: {_health_monitor.offline_queue.size()} messages")
     print(f"Health Interval: {_health_monitor.health_interval} seconds")
     print("=" * 50)

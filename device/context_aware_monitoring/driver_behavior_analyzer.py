@@ -101,10 +101,10 @@ class DriverBehaviorAnalyzer:
         # Violation cooldown tracking (prevent spam)
         self.last_violation_time: Dict[ViolationType, float] = {}
         
-        print("✅ Driver Behavior Analyzer initialized")
+        print(" Driver Behavior Analyzer initialized")
         print(f"   Speed thresholds: Slow<{self.SLOW_SPEED_THRESHOLD}, Medium<{self.MEDIUM_SPEED_THRESHOLD}, High>{self.HIGH_SPEED_THRESHOLD} km/h")
         if health_monitor:
-            print("   📡 Violation reporting: ENABLED")
+            print("   Violation reporting: ENABLED")
     
     def set_speed(self, speed_kmh: float) -> None:
         """
@@ -206,10 +206,10 @@ class DriverBehaviorAnalyzer:
             violation_type: Type of violation detected
             details: Additional violation details
         """
-        print(f"🔍 DEBUG: _report_violation called with {violation_type.value}")
+        print(f" DEBUG: _report_violation called with {violation_type.value}")
         
         if self.health_monitor is None:
-            print("⚠️ DEBUG: health_monitor is None - cannot report violation!")
+            print("DEBUG: health_monitor is None - cannot report violation!")
             return
         
         # Check cooldown
@@ -217,7 +217,7 @@ class DriverBehaviorAnalyzer:
         last_time = self.last_violation_time.get(violation_type, 0)
         
         if now - last_time < self.VIOLATION_COOLDOWN:
-            print(f"⏳ DEBUG: Violation in cooldown ({self.VIOLATION_COOLDOWN - (now - last_time):.0f}s remaining)")
+            print(f" DEBUG: Violation in cooldown ({self.VIOLATION_COOLDOWN - (now - last_time):.0f}s remaining)")
             return  # Still in cooldown
         
         # Update cooldown
@@ -235,7 +235,7 @@ class DriverBehaviorAnalyzer:
         }
         
         # Send violation
-        print(f"📤 DEBUG: Sending violation {violation_type.value} with details: {full_details}")
+        print(f" DEBUG: Sending violation {violation_type.value} with details: {full_details}")
         self.health_monitor.send_violation(violation_type.value, full_details)
     
     def check_violations(self) -> Tuple[ViolationType, str]:

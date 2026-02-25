@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-Road Object Detection with Distance Measurement
-Combines YOLOv8 object detection with MiDaS depth estimation
-to measure distances to detected objects
 
-Includes CTB Device Health Monitoring for IoT deployment
-"""
 import sys
 import time
 from pathlib import Path
@@ -21,14 +15,12 @@ ASSETS_DIR = SCRIPT_DIR / 'assets'
 try:
     from ultralytics import YOLO
 except ImportError:
-    print("ERROR: ultralytics required. Install: pip install ultralytics")
     sys.exit(1)
 
 try:
     import onnxruntime as ort
     ONNX_AVAILABLE = True
 except ImportError:
-    print("ERROR: onnxruntime required for depth estimation. Install: pip install onnxruntime")
     ONNX_AVAILABLE = False
     sys.exit(1)
 
@@ -175,27 +167,6 @@ class ObjectProximityAnalyzer:
         print(f"  - Orange/Red pixels = Medium distance")
     
     def analyze_proximity(self, depth_map_normalized, bbox):
-        """
-        Analyze object proximity by checking depth map brightness
-        
-        IMPROVED: 
-        - Uses BOTTOM HALF of bounding box (where object touches road)
-        - Uses MEDIAN instead of mean (more robust to outliers)
-        - Compares to ground reference depth
-        
-        Logic:
-        - Light/Bright pixels (high values) = Close object
-        - Dark pixels (low values) = Far object  
-        - Orange/Red/Medium brightness = Medium distance
-        
-        Args:
-            depth_map_normalized: Normalized depth map (0-255, where bright=close)
-            bbox: Bounding box (x1, y1, x2, y2)
-            
-        Returns:
-            proximity: "Close" / "Medium" / "Far"
-            avg_brightness: Median brightness value (0-255)
-        """
         x1, y1, x2, y2 = map(int, bbox)
         frame_height, frame_width = depth_map_normalized.shape[:2]
         
@@ -234,13 +205,13 @@ class ObjectProximityAnalyzer:
         depth_diff = abs(median_brightness - ground_brightness)
         
         # Classify based on brightness AND depth difference from ground
-        if median_brightness > 90 or depth_diff < 20:
+        if median_brightness > 100 or depth_diff < 20:
             proximity = "Very Close"
-        elif median_brightness > 65:
+        elif median_brightness > 85:
             proximity = "Close"
-        elif median_brightness > 45:
+        elif median_brightness > 70:
             proximity = "Near"
-        elif median_brightness > 25:
+        elif median_brightness > 35:
             proximity = "Medium"
         else:
             proximity = "Far"
@@ -264,7 +235,7 @@ def main():
         health_monitor = get_health_monitor(config_path=device_config_path)
         if not health_monitor.running:
             health_monitor.start()
-        print(f"✅ Violation reporter ready (Device: {health_monitor.device_key})")
+        print(f" Violation reporter ready (Device: {health_monitor.device_key})")
     
     # Get object detection model
     print("\n[1] Object Detection Model")
@@ -337,7 +308,7 @@ def main():
     lane_tracker = None
     if lane_model is not None and LANE_MEMORY_AVAILABLE:
         lane_tracker = LaneMemoryTracker(max_history=30, decay_rate=0.95, smoothing_factor=0.3)
-        print("✅ Lane Memory Tracker initialized")
+        print(" Lane Memory Tracker initialized")
     
     # Audio warnings for lanes
     warning_sound = None
@@ -348,9 +319,9 @@ def main():
             audio_path = str(ASSETS_DIR / 'microwave-oven-beeps-36087.mp3')
             if Path(audio_path).exists():
                 warning_sound = pygame.mixer.Sound(audio_path)
-                print(f"✅ Audio warning loaded: {audio_path}")
+                print(f" Audio warning loaded: {audio_path}")
         except:
-            print("⚠️ Audio warnings disabled")
+            print("Audio warnings disabled")
     
     last_warning_time = 0
     warning_cooldown = 2.0
@@ -367,7 +338,7 @@ def main():
         # Use config from parent device/ folder to avoid creating duplicate device
         config_path = str(DEVICE_DIR / 'device_config.json')
         health_monitor = get_health_monitor(config_path=config_path)
-        print(f"✅ Health monitor available for violation reporting (config: {config_path})")
+        print(f" Health monitor available for violation reporting (config: {config_path})")
     
     # Initialize Driver Behavior Analyzer
     behavior_analyzer = None
@@ -427,7 +398,7 @@ def main():
         if enable_adaptive != 'n':
             adaptive_processor = AdaptiveProcessor(width, height)
             adaptive_processor.set_speed(vehicle_speed)  # Use the speed from behavior analyzer
-            print(f"✅ Adaptive processor enabled (Speed: {vehicle_speed} km/h)")
+            print(f" Adaptive processor enabled (Speed: {vehicle_speed} km/h)")
             print("   Optimizations: Frame skip, Conditional MiDaS, ROI crop, Resolution scaling, Similarity skip")
     
     print(f"\nProcessing... Press 'q' to quit\n")
@@ -1024,7 +995,7 @@ def main():
     # Print adaptive processor statistics
     if adaptive_processor is not None:
         stats = adaptive_processor.get_stats()
-        print(f"\n📊 ADAPTIVE PROCESSING STATISTICS:")
+        print(f"\n ADAPTIVE PROCESSING STATISTICS:")
         print(f"   Total frames: {stats['total_frames']}")
         print(f"   Frames skipped: {stats['frames_skipped']} ({stats['skip_rate_percent']:.1f}%)")
         print(f"   YOLO inferences: {stats['yolo_runs']}")
@@ -1034,7 +1005,7 @@ def main():
         # Calculate savings
         savings_yolo = (1 - stats['yolo_runs'] / max(1, stats['total_frames'])) * 100
         savings_midas = (1 - stats['midas_runs'] / max(1, stats['total_frames'])) * 100
-        print(f"\n💡 PROCESSING SAVINGS:")
+        print(f"\n PROCESSING SAVINGS:")
         print(f"   YOLO savings: {savings_yolo:.1f}% fewer inferences")
         print(f"   MiDaS savings: {savings_midas:.1f}% fewer inferences")
     

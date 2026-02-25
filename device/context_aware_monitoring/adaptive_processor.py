@@ -34,11 +34,8 @@ class AdaptiveProcessor:
     """
     Adaptive frame processor that optimizes for Raspberry Pi performance.
     
-    Implements 5 optimizations:
     1. Speed-based frame gap
     2. Conditional MiDaS execution
-    3. ROI cropping
-    4. Dynamic resolution scaling
     5. Frame similarity skip
     """
     
@@ -109,7 +106,7 @@ class AdaptiveProcessor:
         # Processing level
         self.current_level = ProcessingLevel.NORMAL
         
-        print("✅ Adaptive Processor initialized")
+        print(" Adaptive Processor initialized")
         print(f"   ROI: Crop top {self.ROI_CROP_TOP*100:.0f}%")
         print(f"   Resolutions: Low={self.RESOLUTION_LOW}, Med={self.RESOLUTION_MEDIUM}, High={self.RESOLUTION_HIGH}")
         print(f"   Frame similarity threshold: {self.SIMILARITY_THRESHOLD*100:.0f}%")
@@ -637,5 +634,5 @@ def create_adaptive_processor(width: int = 1280, height: int = 720,
         Configured AdaptiveProcessor instance
     """
     processor = AdaptiveProcessor(width, height)
-    print(f"📊 Adaptive Processor created for {width}x{height}")
+    print(f" Adaptive Processor created for {width}x{height}")
     return processor

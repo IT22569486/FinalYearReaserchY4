@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-CTB Bus Device Health Monitor
-Monitors device health and sends status via MQTT with offline queue support.
-Designed for Raspberry Pi deployment with intermittent connectivity.
 
-Compatible with Raspberry Pi OS (Debian-based)
-"""
 
 import json
 import os
@@ -32,7 +26,7 @@ try:
     import paho.mqtt.client as mqtt
     MQTT_AVAILABLE = True
 except ImportError:
-    logger.warning("paho-mqtt not found. Install: pip install paho-mqtt")
+    logger.warning("paho-mqtt not found")
 
 # System monitoring
 PSUTIL_AVAILABLE = False
@@ -40,19 +34,18 @@ try:
     import psutil
     PSUTIL_AVAILABLE = True
 except ImportError:
-    logger.warning("psutil not found. Install: pip install psutil")
+    logger.warning("psutil not found")
 
 
 class OfflineQueue:
-    """SQLite-based persistent queue for offline message storage"""
     
     def __init__(self, db_path='device_queue.db'):
-        """Initialize the offline queue with SQLite persistence"""
+        
         self.db_path = db_path
         self._init_db()
     
     def _init_db(self):
-        """Initialize SQLite database for message queue"""
+        
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -72,7 +65,7 @@ class OfflineQueue:
             logger.error(f"Failed to initialize queue DB: {e}")
     
     def enqueue(self, topic, payload):
-        """Add message to queue"""
+        
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -113,7 +106,7 @@ class OfflineQueue:
             logger.error(f"Failed to remove message: {e}")
     
     def size(self):
-        """Get queue size"""
+        
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -127,19 +120,11 @@ class OfflineQueue:
 
 
 class DeviceHealthMonitor:
-    """
-    Device Health Monitor for CTB Bus Systems
-    Sends health status via MQTT with offline queue support
-    """
     
     def __init__(self, device_key=None, config_path='device_config.json'):
-        """
-        Initialize the Device Health Monitor
         
-        Args:
-            device_key: Unique device key for this bus. Auto-generated if None.
-            config_path: Path to configuration file
-        """
+        
+        
         self.config_path = config_path
         self.config = self._load_config()
         
@@ -182,7 +167,7 @@ class DeviceHealthMonitor:
         self._setup_mqtt()
     
     def _load_config(self):
-        """Load configuration from file"""
+        
         if Path(self.config_path).exists():
             try:
                 with open(self.config_path, 'r') as f:
@@ -192,7 +177,7 @@ class DeviceHealthMonitor:
         return {}
     
     def _save_config(self):
-        """Save configuration to file"""
+        
         try:
             with open(self.config_path, 'w') as f:
                 json.dump(self.config, f, indent=2)
@@ -201,8 +186,7 @@ class DeviceHealthMonitor:
             logger.warning(f"Failed to save config: {e}")
     
     def _generate_device_key(self):
-        """Generate a unique device key"""
-        # Use MAC address and UUID for uniqueness
+        
         try:
             mac = uuid.getnode()
             unique_id = uuid.uuid4().hex[:8]
@@ -211,7 +195,7 @@ class DeviceHealthMonitor:
             return f"CTB-{uuid.uuid4().hex[:16]}".upper()
     
     def _setup_mqtt(self):
-        """Setup MQTT client"""
+        
         if not MQTT_AVAILABLE:
             logger.error("MQTT not available. Messages will be queued locally.")
             return
@@ -265,12 +249,12 @@ class DeviceHealthMonitor:
             self.is_connected = False
     
     def _on_disconnect(self, client, userdata, rc):
-        """MQTT disconnection callback"""
+        
         logger.warning(f"⚠️ Disconnected from MQTT broker (rc: {rc})")
         self.is_connected = False
     
     def _on_publish(self, client, userdata, mid):
-        """MQTT publish callback"""
+        
         pass  # Successfully published
     
     def _process_queue(self):
@@ -299,7 +283,7 @@ class DeviceHealthMonitor:
             logger.info(f"📤 Sent {sent_count} queued messages")
     
     def _send_status(self, status):
-        """Send device status (online/offline)"""
+        
         topic = f"{self.mqtt_topic_base}/{self.device_key}/status"
         payload = {
             'device_key': self.device_key,
@@ -417,7 +401,7 @@ class DeviceHealthMonitor:
         }
         
         self._publish(topic, payload)
-        logger.info(f"📊 Health update sent for {self.device_key}")
+        logger.info(f"Health update sent for {self.device_key}")
     
     def send_violation(self, violation_type, details=None):
         """
@@ -490,7 +474,7 @@ class DeviceHealthMonitor:
     def start(self):
         """Start the health monitor"""
         logger.info("=" * 50)
-        logger.info("🚌 Starting CTB Device Health Monitor")
+        logger.info("Starting CTB Device Health Monitor")
         logger.info(f"   Device Key: {self.device_key}")
         logger.info(f"   Bus Number: {self.bus_number}")
         logger.info(f"   Route: {self.route_number}")

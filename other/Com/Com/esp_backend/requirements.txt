@@ -1,0 +1,12 @@
+flask
+flask-cors
+flask-socketio
+firebase-admin
+pandas
+joblib
+scikit-learn
+lightgbm
+gunicorn
+requests
+python-dotenv
+eventlet

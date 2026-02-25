@@ -27,17 +27,17 @@ function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
     const mqttServer = net.createServer(aedes.handle);
     
     mqttServer.listen(mqttPort, () => {
-        console.log(`📡 MQTT Broker:     mqtt://localhost:${mqttPort}`);
+        console.log(` MQTT Broker:     mqtt://localhost:${mqttPort}`);
     });
 
     // Handle client connections
     aedes.on('client', (client) => {
-        console.log(`🔌 MQTT Client connected: ${client.id}`);
+        console.log(` MQTT Client connected: ${client.id}`);
     });
 
     // Handle client disconnections
     aedes.on('clientDisconnect', async (client) => {
-        console.log(`🔌 MQTT Client disconnected: ${client.id}`);
+        console.log(` MQTT Client disconnected: ${client.id}`);
         
         // Try to mark device as offline if client ID contains device key
         if (client.id && client.id.startsWith('CTB-')) {
@@ -109,7 +109,7 @@ async function handleHealthUpdate(topic, payload) {
         return;
     }
 
-    console.log(`💓 Health update from ${device_key}`);
+    console.log(`Health update from ${device_key}`);
 
     try {
         // Update device in Firebase

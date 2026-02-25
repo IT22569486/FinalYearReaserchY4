@@ -1,10 +1,10 @@
-# 🚌 CTB Bus Rule Violation Detection System
+# CTB Bus Rule Violation Detection System
 
 A comprehensive IoT-based system for monitoring Sri Lankan CTB bus driver behavior in real-time. The system uses computer vision, depth estimation, and machine learning to detect driving violations and report them to a centralized dashboard.
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 1. [System Overview](#system-overview)
 2. [Architecture](#architecture)
@@ -19,7 +19,7 @@ A comprehensive IoT-based system for monitoring Sri Lankan CTB bus driver behavi
 
 ---
 
-## 🏗️ System Overview
+##  System Overview
 
 The system consists of three main components:
 
@@ -68,7 +68,7 @@ The system consists of three main components:
 
 ---
 
-## 🚨 Violation Detection
+##  Violation Detection
 
 The `DriverBehaviorAnalyzer` class monitors driver behavior and detects the following violations:
 
@@ -133,7 +133,7 @@ def _report_violation(self, violation_type, details):
 
 ---
 
-## 🛣️ Lane Prediction
+##  Lane Prediction
 
 ### Lane Detection Model
 
@@ -183,7 +183,7 @@ def check_lane_position(vehicle_x, lane_polygon):
 
 ---
 
-## 📡 MQTT Communication
+##  MQTT Communication
 
 **MQTT (Message Queuing Telemetry Transport)** is a lightweight protocol for IoT devices.
 
