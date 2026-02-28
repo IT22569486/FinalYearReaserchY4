@@ -169,3 +169,6 @@ frontend/npm-debug.log*
 # Ignore lockfiles generated during local dev if desired (optional)
 # package-lock.json
 # yarn.lock
+
+*.json
+firebase-adminsdk-*.json
