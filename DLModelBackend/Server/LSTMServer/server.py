@@ -130,10 +130,15 @@ def predict_arrival():
         hour = data['hour']
         minute = data['minute']
         
+        # Debug logging
+        print(f"Received prediction request: {origin} -> {destination}, distance: {distance}, time: {hour}:{minute}")
+        
         origin_id = stop_encoder.transform([origin])[0]
         dest_id = stop_encoder.transform([destination])[0]
 
-        num = x_scaler.transform([[distance, hour, minute]])
+        # Create DataFrame with proper column names for scaler (must match training column names)
+        num_df = pd.DataFrame([[distance, hour, minute]], columns=['Distance_km', 'hour', 'minute'])
+        num = x_scaler.transform(num_df)
 
         num_seq = np.repeat(num[np.newaxis, :, :], SEQ_LEN_ARRIVAL, axis=1)
         origin_seq = np.full((1, SEQ_LEN_ARRIVAL), origin_id)
@@ -148,9 +153,19 @@ def predict_arrival():
         return jsonify({'predicted_arrival_time_seconds': predicted_time_sec})
 
     except KeyError as e:
+        print(f"Missing key in input: {e}")
         return jsonify({'error': f'Missing key in input: {e}'}), 400
+    except ValueError as e:
+        print(f"ValueError (possibly unknown stop name): {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Invalid value: {str(e)}'}), 400
     except Exception as e:
-        return jsonify({'error': f'An error occurred: {e}'}), 500
+        print(f"Error in arrival time prediction: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port, debug=False)
