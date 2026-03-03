@@ -2,7 +2,6 @@ services:
   - type: web
     name: lstm-server
     env: python
-    pythonVersion: 3.11
     rootDir: DLModelBackend/Server/LSTMServer
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn server:app
