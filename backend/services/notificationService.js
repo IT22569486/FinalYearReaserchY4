@@ -1,29 +1,38 @@
 const { db, admin } = require("../firebase");
+const { Notification } = require("../models");
 const notificationsCollection = db.collection("notifications");
 
 // Create a new notification
 const createNotification = async (userId, notificationData) => {
   const {
-    type, // 'bus_arrival', 'trip_update', 'rating_reminder', 'service_alert', etc.
+    type,
     title,
     message,
-    data = {}, // Additional data like busId, tripId, etc.
-    priority = 'normal', // 'high', 'normal', 'low'
+    priority = 'normal',
+    busId = '',
+    busNumber = '',
+    estimatedArrivalTime = '',
+    latitude = 0,
+    longitude = 0,
   } = notificationData;
 
-  const newNotification = {
+  const notification = new Notification({
     userId,
     type,
     title,
     message,
-    data,
     priority,
     read: false,
     createdAt: new Date(),
-  };
+    busId,
+    busNumber,
+    estimatedArrivalTime,
+    latitude,
+    longitude,
+  });
 
-  const docRef = await notificationsCollection.add(newNotification);
-  return { id: docRef.id, ...newNotification };
+  const docRef = await notificationsCollection.add(notification.toFirestore());
+  return { id: docRef.id, ...notification.toFirestore() };
 };
 
 // Get all notifications for a user
@@ -32,7 +41,10 @@ const getNotificationsByUserId = async (userId) => {
     .where("userId", "==", userId)
     .orderBy("createdAt", "desc")
     .get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const notification = Notification.fromFirestore(doc);
+    return { id: doc.id, ...notification.toFirestore() };
+  });
 };
 
 // Get unread notifications for a user
@@ -42,7 +54,10 @@ const getUnreadNotifications = async (userId) => {
     .where("read", "==", false)
     .orderBy("createdAt", "desc")
     .get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const notification = Notification.fromFirestore(doc);
+    return { id: doc.id, ...notification.toFirestore() };
+  });
 };
 
 // Get unread count
@@ -69,7 +84,8 @@ const markAsRead = async (notificationId, userId) => {
 
   await notificationRef.update({ read: true });
   const updatedDoc = await notificationRef.get();
-  return { id: updatedDoc.id, ...updatedDoc.data() };
+  const notification = Notification.fromFirestore(updatedDoc);
+  return { id: updatedDoc.id, ...notification.toFirestore() };
 };
 
 // Mark all notifications as read
@@ -127,7 +143,10 @@ const getNotificationsByType = async (userId, type) => {
     .where("type", "==", type)
     .orderBy("createdAt", "desc")
     .get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const notification = Notification.fromFirestore(doc);
+    return { id: doc.id, ...notification.toFirestore() };
+  });
 };
 
 // Send notification to multiple users (broadcast)

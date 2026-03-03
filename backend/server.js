@@ -68,6 +68,7 @@ const userRoutes = require("./routes/userRoutes");
 const busRoutes = require("./routes/busRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const routeRoutes = require("./routes/routeRoutes");
+const busTripRoutes = require("./routes/busTripRoutes");
 const busTripRecordRoutes = require("./routes/busTripRecordRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
@@ -78,7 +79,7 @@ const authRoutes = require("./routes/authRoutes");
 // =============================================================================
 const deviceRoutes = require("./routes/deviceRoutes");
 const violationRoutes = require("./routes/violationRoutes");
-
+const fleetRoutes = require("./routes/fleetRoutes");const dmsRoutes = require('./routes/dmsRoutes');
 // =============================================================================
 // MOUNT ROUTES
 // =============================================================================
@@ -87,6 +88,7 @@ app.use("/api/user", userRoutes);
 app.use('/api/bus', busRoutes(io));
 app.use("/api/trip", tripRoutes);
 app.use("/api/routes", routeRoutes);
+app.use("/api/bus-trips", busTripRoutes);
 app.use("/api/bus-trip-records", busTripRecordRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -95,6 +97,12 @@ app.use("/api/auth", authRoutes);
 // Your device monitoring routes
 app.use("/api/devices", deviceRoutes);
 app.use("/api/violations", violationRoutes);
+
+// Fleet management routes (safe speed monitoring)
+app.use("/api/fleet", fleetRoutes);
+
+// Driver Monitoring System routes
+app.use("/api/dms", dmsRoutes);
 
 // Dashboard route - serve index.html for all non-API routes
 // Note: Using app.use() instead of app.get('*') to avoid path-to-regexp parsing issues
@@ -210,4 +218,3 @@ process.on('SIGINT', async () => {
 });
 
 module.exports = { app, server, io };
-
