@@ -1,0 +1,12 @@
+frontend/
+backend/
+device/
+drowsy_backend/
+drowsy_frontend/
+esp_backend/
+esp_frontend/
+webfrontend/
+TheariticalInfo/
+.git
+.gitignore
+node_modules
