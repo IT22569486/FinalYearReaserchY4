@@ -1,9 +1,10 @@
 const { db } = require("../firebase");
+const { Trip } = require("../models");
 const tripsCollection = db.collection("trips");
 
 const startTrip = async (passengerId, tripData) => {
   const { busId, departure, destination } = tripData;
-  const newTrip = {
+  const trip = new Trip({
     passengerId,
     busId,
     startTime: new Date(),
@@ -11,15 +12,18 @@ const startTrip = async (passengerId, tripData) => {
     destination,
     currentLocation: departure,
     status: "active",
-  };
+  });
 
-  const docRef = await tripsCollection.add(newTrip);
-  return { id: docRef.id, ...newTrip };
+  const docRef = await tripsCollection.add(trip.toFirestore());
+  return { id: docRef.id, ...trip.toFirestore() };
 };
 
 const getTripsByPassengerId = async (passengerId) => {
   const snapshot = await tripsCollection.where("passengerId", "==", passengerId).get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const trip = Trip.fromFirestore(doc);
+    return { id: doc.id, ...trip.toFirestore() };
+  });
 };
 
 const getActiveTripByPassengerId = async (passengerId) => {
@@ -32,7 +36,8 @@ const getActiveTripByPassengerId = async (passengerId) => {
   if (snapshot.empty) {
     return null;
   }
-  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  const trip = Trip.fromFirestore(snapshot.docs[0]);
+  return { id: snapshot.docs[0].id, ...trip.toFirestore() };
 };
 
 const updateTripLocation = async (tripId, passengerId, currentLocation) => {

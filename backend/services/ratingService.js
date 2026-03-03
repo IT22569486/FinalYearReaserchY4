@@ -1,4 +1,5 @@
 const { db } = require("../firebase");
+const { Rating } = require("../models");
 const ratingsCollection = db.collection("ratings");
 
 // Submit a new rating
@@ -25,7 +26,7 @@ const submitRating = async (passengerId, tripId, busId, driverId, ratingData) =>
     }
   }
 
-  const newRating = {
+  const rating = new Rating({
     passengerId,
     tripId,
     busId,
@@ -36,35 +37,45 @@ const submitRating = async (passengerId, tripId, busId, driverId, ratingData) =>
     overallRating,
     comment: comment || '',
     createdAt: new Date(),
-  };
+  });
 
-  const docRef = await ratingsCollection.add(newRating);
-  return { id: docRef.id, ...newRating };
+  const docRef = await ratingsCollection.add(rating.toFirestore());
+  return { id: docRef.id, ...rating.toFirestore() };
 };
 
 // Get all ratings for a bus
 const getRatingsByBusId = async (busId) => {
   const snapshot = await ratingsCollection.where("busId", "==", busId).get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const rating = Rating.fromFirestore(doc);
+    return { id: doc.id, ...rating.toFirestore() };
+  });
 };
 
 // Get all ratings for a driver
 const getRatingsByDriverId = async (driverId) => {
   const snapshot = await ratingsCollection.where("driverId", "==", driverId).get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const rating = Rating.fromFirestore(doc);
+    return { id: doc.id, ...rating.toFirestore() };
+  });
 };
 
 // Get all ratings by a passenger
 const getRatingsByPassengerId = async (passengerId) => {
   const snapshot = await ratingsCollection.where("passengerId", "==", passengerId).get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((doc) => {
+    const rating = Rating.fromFirestore(doc);
+    return { id: doc.id, ...rating.toFirestore() };
+  });
 };
 
 // Get rating for a specific trip
 const getRatingByTripId = async (tripId) => {
   const snapshot = await ratingsCollection.where("tripId", "==", tripId).limit(1).get();
   if (snapshot.empty) return null;
-  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  const rating = Rating.fromFirestore(snapshot.docs[0]);
+  return { id: snapshot.docs[0].id, ...rating.toFirestore() };
 };
 
 // Calculate average ratings for a bus

@@ -92,7 +92,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Models and large binaries
-models/
 old_models/
 *.pt
 *.onnx
