@@ -3,5 +3,5 @@ services:
     name: lstm-server
     env: python
     rootDir: DLModelBackend/Server/LSTMServer
-    buildCommand: bash build.sh
+    buildCommand: pip install --only-binary :all: -r requirements.txt 2>&1 || pip install -r requirements.txt
     startCommand: gunicorn server:app
