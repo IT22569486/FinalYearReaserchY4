@@ -4,43 +4,83 @@ import { useNavigation } from '@react-navigation/native';
 import RNPickerSelect from 'react-native-picker-select';
 import { Ionicons } from '@expo/vector-icons';
 import io from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import MapViewComponent from '../components/MapViewComponent';
 import { BACKEND_URL } from '../config';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
 
 const socket = io(BACKEND_URL);
-
-/**
- * Parses a Google Maps directions URL to extract an array of coordinates.
- * @param {string} url The Google Maps URL.
- * @returns {Array<{latitude: number, longitude: number}>} An array of coordinate objects.
- */
-function parseGoogleMapsUrl(url) {
-  if (!url) return [];
-  // Regex to find all lat,lng pairs in the /dir/ part of the URL
-const regex = /(origin|destination|waypoints)=([0-9.\-]+),([0-9.\-]+)/g;
-
-  const match = url.match(regex);
-
-  if (!match || !match[1]) return [];
-
-  return match[1]
-    .split('/')
-    .filter(Boolean) // Remove any empty strings from trailing slashes
-    .map(pair => {
-      const [lat, lng] = pair.split(',');
-      return { latitude: parseFloat(lat), longitude: parseFloat(lng) };
-    });
-}
 
 const BusRoutesScreen = () => {
   const [allBuses, setAllBuses] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
+  const [selectedOrigin, setSelectedOrigin] = useState(null);
+  const [selectedDestination, setSelectedDestination] = useState(null);
+  const [selectedRouteDetails, setSelectedRouteDetails] = useState(null);
   const [passengerLocation, setPassengerLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const navigation = useNavigation();
+  const { refreshSession } = useSession();
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      initializeScreen();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const initializeScreen = async () => {
+    try {
+      await updateLastActivity();
+      await refreshSession();
+
+      (async () => {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setErrorMsg('Permission to access location was denied');
+          return;
+        }
+        let location = await Location.getCurrentPositionAsync({});
+        setPassengerLocation(location.coords);
+      })();
+
+      const fetchData = async () => {
+        try {
+          const [routesRes, busesRes] =
+           await Promise.all([
+            apiClient.get('/api/routes'),
+            apiClient.get('/api/bus'),
+          ]);
+          setRoutes(routesRes.data);
+          setAllBuses(busesRes.data);
+        } catch (err) {
+          setErrorMsg('Failed to fetch data');
+          console.error(err);
+        }
+      };
+
+      fetchData();
+
+      socket.on('busLocationUpdate', (updatedBus) => {
+        setAllBuses((prevBuses) => {
+          const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
+          if (index !== -1) {
+            const newBuses = [...prevBuses];
+            newBuses[index] = updatedBus;
+            return newBuses;
+          }
+          return [...prevBuses, updatedBus];
+        });
+      });
+
+      return () => socket.off('busLocationUpdate');
+    } catch (error) {
+      console.error('Error initializing BusRoutesScreen:', error);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -57,8 +97,8 @@ const BusRoutesScreen = () => {
       try {
         const [routesRes, busesRes] =
          await Promise.all([
-          axios.get(`${BACKEND_URL}/api/routes`),
-          axios.get(`${BACKEND_URL}/api/bus`),
+          apiClient.get('/api/routes'),
+          apiClient.get('/api/bus'),
         ]);
         setRoutes(routesRes.data);
         setAllBuses(busesRes.data);
@@ -85,6 +125,25 @@ const BusRoutesScreen = () => {
     return () => socket.off('busLocationUpdate');
   }, []);
 
+  useEffect(() => {
+    if (!selectedRoute) {
+      setSelectedRouteDetails(null);
+      return;
+    }
+
+    const fetchRouteDetails = async () => {
+      try {
+        const res = await apiClient.get(`/api/routes/google-route/${selectedRoute}`);
+        setSelectedRouteDetails(res.data);
+      } catch (err) {
+        console.error('Failed to fetch route details:', err);
+        setErrorMsg('Failed to load route details');
+      }
+    };
+
+    fetchRouteDetails();
+  }, [selectedRoute]);
+
   const filteredBuses = useMemo(() => {
     if (!selectedRoute) return allBuses;
     return allBuses.filter((bus) => bus.routeId === selectedRoute);
@@ -96,24 +155,39 @@ const BusRoutesScreen = () => {
   }, [selectedRoute, routes]);
 
   const selectedRoutePath = useMemo(() => {
-    if (!selectedRouteObject || !selectedRouteObject.googleMapsUrl) {
-      return [];
-    }
-    return parseGoogleMapsUrl(selectedRouteObject.googleMapsUrl);
-  }, [selectedRouteObject]);
+    return selectedRouteDetails ? selectedRouteDetails.coordinates : [];
+  }, [selectedRouteDetails]);
 
   const selectedRouteStops = useMemo(() => {
-    if (!selectedRouteObject || !selectedRouteObject.googleMapsUrl) {
-      return [];
-    }
-    // Generate stops from the parsed URL coordinates
-    const coordinates = parseGoogleMapsUrl(selectedRouteObject.googleMapsUrl);
-    return coordinates.map((coord, index) => ({
-      lat: coord.latitude,
-      lng: coord.longitude,
-      stopName: `Stop ${index + 1}` // Auto-generate stop names
+    if (!selectedRouteDetails) return [];
+    return selectedRouteDetails.stops.map(stopName => {
+      const stopData = routes.flatMap(r => r.path).find(p => p.stopName === stopName);
+      return {
+        lat: stopData?.lat,
+        lng: stopData?.lng,
+        stopName: stopName,
+      };
+    });
+  }, [selectedRouteDetails, routes]);
+
+  const stopPickerItems = useMemo(() => {
+    if (!selectedRouteStops || selectedRouteStops.length === 0) return [];
+    return selectedRouteStops.map(stop => ({
+      label: stop.stopName,
+      value: stop.stopName,
     }));
-  }, [selectedRouteObject]);
+  }, [selectedRouteStops]);
+
+  const destinationPickerItems = useMemo(() => {
+    if (!selectedOrigin) return [];
+    const originIndex = selectedRouteStops.findIndex(stop => stop.stopName === selectedOrigin);
+    if (originIndex === -1) return [];
+    
+    return selectedRouteStops.map(stop => ({
+        label: stop.stopName,
+        value: stop.stopName,
+    }));
+  }, [selectedOrigin, selectedRouteStops]);
 
   // Format routes data for the picker
   const pickerItems = useMemo(() => {
@@ -124,12 +198,40 @@ const BusRoutesScreen = () => {
   }, [routes]);
 
   const handleBusPress = (bus) => {
+    if (!selectedOrigin || !selectedDestination) {
+      Alert.alert('Missing Information', 'Please select both an origin and a destination.');
+      return;
+    }
+
+    const startTrip = async () => {
+      try {
+        const response = await apiClient.post('/api/trip/start', {
+          busId: bus.busId,
+          departure: selectedOrigin,
+          destination: selectedDestination,
+        });
+
+        const tripId = response?.data?.id || response?.data?._id || null;
+
+        navigation.navigate('CurrentTrip', {
+          busId: bus.busId,
+          routeId: bus.routeId,
+          origin: selectedOrigin,
+          destination: selectedDestination,
+          tripId,
+        });
+      } catch (err) {
+        console.error('Failed to start trip:', err?.response?.data || err.message);
+        Alert.alert('Unable to start trip', 'Please try again or re-login.');
+      }
+    };
+
     Alert.alert(
       'Confirm Trip',
-      `Do you want to travel with Bus ${bus.busId} on route ${bus.routeId}?`,
+      `Travel from ${selectedOrigin} to ${selectedDestination} with Bus ${bus.busId}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => navigation.navigate('CurrentTrip', { busId: bus.busId, routeId: bus.routeId }) },
+        { text: 'Confirm', onPress: () => startTrip() },
       ],
       { cancelable: false }
     );
@@ -150,12 +252,28 @@ const BusRoutesScreen = () => {
         buses={filteredBuses}
         passengerLocation={passengerLocation}
         onBusPress={handleBusPress}
+        initialRegion={selectedRouteObject?{
+          latitude: selectedRouteObject.path[0].lat,
+          longitude: selectedRouteObject.path[0].lng,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        }:{
+          latitude: passengerLocation.latitude,
+          longitude: passengerLocation.longitude,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        }}
         routePath={selectedRoutePath}
         stops={selectedRouteStops}
+        routes={routes}
       />
       <View style={styles.filterOverlay}>
         <RNPickerSelect
-          onValueChange={(value) => setSelectedRoute(value)}
+          onValueChange={(value) => {
+            setSelectedRoute(value);
+            setSelectedOrigin(null);
+            setSelectedDestination(null);
+          }}
           items={pickerItems}
           style={pickerSelectStyles}
           value={selectedRoute}
@@ -165,6 +283,34 @@ const BusRoutesScreen = () => {
             return <Ionicons name="chevron-down" size={24} color="gray" />;
           }}
         />
+        {selectedRoute && (
+          <>
+            <View style={styles.separator} />
+            <RNPickerSelect
+              onValueChange={(value) => {
+                setSelectedOrigin(value);
+                setSelectedDestination(null); // Reset destination when origin changes
+              }}
+              items={stopPickerItems}
+              style={pickerSelectStyles}
+              value={selectedOrigin}
+              placeholder={{ label: 'Select Origin', value: null }}
+              useNativeAndroidPickerStyle={false}
+              Icon={() => <Ionicons name="locate" size={24} color="gray" />}
+            />
+            <View style={styles.separator} />
+            <RNPickerSelect
+              onValueChange={(value) => setSelectedDestination(value)}
+              items={destinationPickerItems}
+              style={pickerSelectStyles}
+              value={selectedDestination}
+              placeholder={{ label: 'Select Destination', value: null }}
+              disabled={!selectedOrigin}
+              useNativeAndroidPickerStyle={false}
+              Icon={() => <Ionicons name="flag" size={24} color="gray" />}
+            />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -186,6 +332,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
+  separator: {
+    height: 1,
+    backgroundColor: '#E5E5E5',
+    marginVertical: 5,
+  }
 });
 
 const pickerSelectStyles = StyleSheet.create({

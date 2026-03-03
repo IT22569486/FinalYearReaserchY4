@@ -1,13 +1,16 @@
-import React, { useEffect, useState, useMemo } from 'react'; // Import useMemo
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react'; 
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import io from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapViewComponent from '../components/MapViewComponent';
-import { BACKEND_URL, ML_BACKEND_URL } from '../config'; // Import both URLs
+import { BACKEND_URL, ML_BACKEND_URL } from '../config';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
+import axios from 'axios';
 
 const socket = io(BACKEND_URL);
 
@@ -24,18 +27,31 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   return R * c; // Distance in km
 };
 
+// Helper function to get the last 3 records of a trip from Firestore
+const getLastThreeRecordsOfTrip = async (tripId) => {
+    try {
+        const response = await apiClient.get(`/api/bus-trip-records/trip/${tripId}/last-three`);
+        return response.data;
+    } catch (error) {
+        console.error('Error getting last three records of trip:', error);
+        throw new Error('Error getting last three records of trip: ' + error.message);
+    }
+};
 
 const CurrentTripScreen = ({ route }) => {
-  // The bus to track is passed via navigation parameters
-  const { busId } = route.params || {};
+  const { busId, origin: userOrigin, destination: userDestination, tripId: passengeTripId } = route.params || {};
   
   const [bus, setBus] = useState(null);
-  const [busroute, setRoute] = useState(null);
+  const [allRoutes, setAllRoutes] = useState([]);
+  const [routeDetails, setRouteDetails] = useState(null);
+  const [currentRoute, setCurrentRoute] = useState(null);
   const [passengerLocation, setPassengerLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [predictedPassengers, setPredictedPassengers] = useState(null); // State for passenger prediction
-  const [predictedArrivalTime, setPredictedArrivalTime] = useState(null); // State for arrival time prediction
-  const navigation = useNavigation(); // Get navigation object
+  const [predictedPassengers, setPredictedPassengers] = useState(null); 
+  const [predictedArrivalTime, setPredictedArrivalTime] = useState(null); 
+  const [totalEtaToDestination, setTotalEtaToDestination] = useState(null);
+  const navigation = useNavigation();
+  const { refreshSession } = useSession(); 
 
   // Effect to fetch bus data and passenger location
   useEffect(() => {
@@ -58,21 +74,32 @@ const CurrentTripScreen = ({ route }) => {
       setPassengerLocation(location.coords);
     })();
 
-    const fetchBus = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/bus/${busId}`);
-        setBus(res.data);
+        await updateLastActivity();
+        await refreshSession();
+
+        // Fetch the specific bus
+        const busRes = await apiClient.get(`/api/bus/${busId}`);
+        setBus(busRes.data);
+
+        // Fetch all routes for context
+        const routesRes = await apiClient.get('/api/routes');
+        setAllRoutes(routesRes.data);
+
       } catch (err) {
-        setErrorMsg('Could not find the specified bus.');
+        setErrorMsg('Could not find the specified bus or routes.');
         console.error(err);
       }
     };
 
-    fetchBus();
+    fetchInitialData();
 
     const handleUpdate = (updatedBus) => {
       if (updatedBus.busId === busId) {
         setBus(updatedBus);
+        // Add to history for sequence-based prediction
+        // setTripHistory(prevHistory => [...prevHistory, updatedBus]);
       }
     };
     
@@ -81,179 +108,376 @@ const CurrentTripScreen = ({ route }) => {
     return () => socket.off('busLocationUpdate', handleUpdate);
   }, [busId, navigation]);
 
-  // effect to fetch route data *after* bus data is available
+  // effect to fetch detailed route data *after* bus data is available
   useEffect(() => {
     if (bus && bus.routeId) {
-      const fetchRoute = async () => {
+      const fetchRouteDetails = async () => {
         try {
-          const res = await axios.get(`${BACKEND_URL}/api/routes/${bus.routeId}`);
-          setRoute(res.data);
+          const res = await apiClient.get(`/api/routes/google-route/${bus.routeId}`);
+          setRouteDetails(res.data);
         } catch (err) {
-          setErrorMsg('Could not find the specified route.');
+          setErrorMsg('Could not find the specified route details.');
           console.error(err);
         }
       };
-      fetchRoute();
+      fetchRouteDetails();
     }
   }, [bus]); // This effect runs whenever the 'bus' state changes
 
   // useMemo must be at the top level of the component
   const selectedRoutePath = useMemo(() => {
-    if (!busroute || !busroute.path) {
-      return [];
-    }
-    return busroute.path.map(coord => ({
-      latitude: coord.lat,
-      longitude: coord.lng,
-    }));
-  }, [busroute]);
+    return routeDetails ? routeDetails.coordinates : [];
+  }, [routeDetails]);
 
   // Extract the stops to display as markers
   const routeStops = useMemo(() => {
-    if (!busroute || !busroute.path) {
+    if (!routeDetails || !allRoutes.length) {
       return [];
     }
-    return busroute.path; // The 'path' array already contains the stops
-  }, [busroute]);
+    // Find the full route object from allRoutes
+    const currentRoute = allRoutes.find(r => r.id === bus.routeId);
+    if (!currentRoute || !currentRoute.path) return [];
+    setCurrentRoute(currentRoute);
+
+    // Map the stop names from details to the full stop objects from the path
+    return routeDetails.stops.map(stopName => {
+      return currentRoute.path.find(p => p.stopName === stopName);
+    }).filter(Boolean); // Filter out any undefined stops
+  }, [routeDetails, allRoutes, bus]);
 
   const handleEndTrip = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        // Tell the backend to set the user's current trip to null
-        await axios.post(`${BACKEND_URL}/api/user/end-trip`, {}, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      if (!passengeTripId) {
+        console.error('No trip ID available to end trip');
+        Alert.alert('Error', 'Trip ID not found. Cannot end trip.');
+        return;
       }
+      console.log('Failed to end trip on the server:', passengeTripId);
+      await apiClient.put('/api/trip/end', { tripId: passengeTripId });
+
     } catch (error) {
       console.error('Failed to end trip on the server:', error);
+      Alert.alert('Error', 'Failed to end trip. Please try again.');
     } finally {
-      // Reset the navigation stack to the MainTabs, starting on the Routes screen.
-      // This prevents the user from navigating back to the ended trip.
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs', params: { screen: 'Routes' } }],
-      });
+      // Navigate to rating screen instead of going back
+      if (bus && busId) {
+        navigation.navigate('Rating', {
+          tripId: passengeTripId,
+          busId: busId,
+          driverId: bus.driverId || bus.driver_id || 'unknown',
+          busNumber: bus.busId,
+        });
+      } else {
+        // Fallback if bus data is not available
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs', params: { screen: 'Routes' } }],
+        });
+      }
     }
   };
 
   // Effect to call prediction model when bus location or route changes
   useEffect(() => {
-    if (!bus || !busroute || !bus.location) {
+    if (!bus || !routeDetails || !bus.location) {
       return;
     }
 
     // Debounce the prediction logic to avoid excessive API calls
     const handler = setTimeout(() => {
       // --- 1. Find Current and Next Stop ---
-      const stops = busroute.path; // Assuming busroute.path is the array of stops
-      // if (!stops || stops.length < 2) {
-      //   console.log("Prediction skipped: Not enough stops in route path.");
-      //   return;
-      // }
-
-      // Find the index of the stop the bus is closest to
-      let closestStopIndex = -1;
-      let minDistance = Infinity;
-
-      stops.forEach((stop, index) => {
-        const distance = getDistance(
-          bus.location.latitude,
-          bus.location.longitude,
-          stop.lat,
-          stop.lng
-        );
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestStopIndex = index;
-        }
-      });
-      
-      // if (closestStopIndex === -1) {
-      //   console.log("Prediction skipped: Could not find a closest stop.");
-      //   return;
-      // }
-
-      // Determine current and next stop based on direction
-      let currentStop, nextStop;
-      // Assuming 0 is forward, 1 is reverse
-      if (bus.direction === 1) { 
-          currentStop = stops[closestStopIndex];
-          nextStop = closestStopIndex > 0 ? stops[closestStopIndex - 1] : null;
-      } else { 
-          currentStop = stops[closestStopIndex];
-          nextStop = closestStopIndex < stops.length - 1 ? stops[closestStopIndex + 1] : null;
+      const stops = routeStops; // Use the memoized stops with coordinates
+      if (!stops || stops.length < 2) {
+        console.log("Prediction skipped: Not enough stops in route path.");
+        return;
       }
-
-      // if (!currentStop || !nextStop) {
-      //   console.log("Prediction skipped: Could not determine current/next stop (likely at end of route).");
-      //   return;
-      // }
 
       // --- 2. Prepare Data for Prediction ---
       const now = new Date();
-      const dayType = (now.getDay() === 0 || now.getDay() === 6) ? 'Weekend' : 'Weekday';
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const month = now.getMonth() + 1; // JS months are 0-indexed
+      const day = now.getDate();
+      const dayType = (now.getDay() === 0 || now.getDay() === 6) ? 'weekend' : 'weekday';
+      const currentRoute = allRoutes.find(r => r.id === bus.routeId);
 
-      const predictionInput = {
-//         // Static or easily derived data
-//         Date: now.toISOString().split('T')[0], // "YYYY-MM-DD"
-//         Time: now.toTimeString().substring(0, 5), // "HH:MM"
-//         Day_Type: dayType,
-//         Direction: bus.direction,
-//         Trip_No: busroute.tripNo || `Trip_${bus.routeId}`, // Use a fallback if not available
-//         Holiday_Type: "None", // Placeholder
-// // 1/1/2023,Weekend,,Kad-Kol_1,5:00,1,Kaduwela,Kothalawala,3.2,4,0,4,0,0,0,0,0
-//         // Dynamic data based on bus and route
-//         Stop: currentStop.stopName,
-//         Next_Stop: nextStop.stopName,
-//         Distance_to_Next_km: getDistance(currentStop.lat, currentStop.lng, nextStop.lat, nextStop.lng),
-        
-//         // Placeholders - ensure your model can handle these values
-//         Trip_Duration_So_Far_min: bus.tripDuration || 0,
-//         Cumulative_Distance_km: bus.cumulativeDistance || 0,
-//         Current_Passengers: bus.passengers || 0,
-
-// Static or easily derived data
-        Date:  '2023-1-1', // "YYYY-MM-DD"
-        Time:  '05:00', // "HH:MM"
-        Day_Type: 'Weekend',
-        Direction: 0,
-        Trip_No: 'TripKol_1', // Use a fallback if not available
-        Holiday_Type: "", // Placeholder
-// 1/1/2023,Weekend,,Kad-Kol_1,5:00,1,Kaduwela,Kothalawala,3.2,4,0,4,0,0,0,0,0
-        // Dynamic data based on bus and route
-        Stop: 'Kaduwela',
-        Next_Stop: 'Kothalawala',
-        Distance_to_Next_km: 3.2,
-        
-        // Placeholders - ensure your model can handle these values
-        Trip_Duration_So_Far_min: 0,
-        Cumulative_Distance_km:  0,
-        Current_Passengers: 4,
-      };
-
-      // --- 3. Call Prediction API ---
+      // --- 3. Call Prediction APIs ---
       const getPredictions = async () => {
+        let currentStop, nextStop, currentStopIndex;
+
+        // Find the closest stop via GPS as a fallback and for distance checks
+        let closestStopIndex = -1;
+        let minDistance = Infinity;
+        stops.forEach((stop, index) => {
+            const distance = getDistance(
+              bus.location.latitude,
+              bus.location.longitude,
+              stop.lat,
+              stop.lng
+            );
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestStopIndex = index;
+            }
+        });
+
+        let direction;
+        // First, try to determine current stop from the last trip record
+        if (bus && bus.currentTrip) {
+            try {
+                const records = await getLastThreeRecordsOfTrip(bus.currentTrip);
+                if (records && records.length > 0) {
+                    const lastVisitedStopName = records[0].Origin;
+                    const lastVisitedStopIndex = stops.findIndex(s => s.stopName === lastVisitedStopName);
+                    direction = records[0].trip_direction;
+
+                    if (lastVisitedStopIndex !== -1) {
+                        currentStopIndex = lastVisitedStopIndex;
+                        console.log(`Determined current stop index from trip record: ${currentStopIndex}`);
+                    }
+                }
+            } catch (err) {
+                console.log("Could not fetch trip history, will use GPS fallback.", err.message);
+            }
+        }
+
+        // If we couldn't determine stop from records, use GPS-based closest stop
+        if (currentStopIndex === undefined) {
+            if (closestStopIndex !== -1) {
+                currentStopIndex = closestStopIndex;
+                console.log(`Using GPS to determine current stop index: ${currentStopIndex}`);
+            } else {
+                console.log("Prediction skipped: Could not find any closest stop.");
+                return; // Can't proceed without a stop
+            }
+        }
+
+        // Determine current and next stop based on the definitive index and direction
+        if (direction === 0) { // forward
+            currentStop = stops[currentStopIndex];
+            nextStop = currentStopIndex > 0 ? stops[currentStopIndex - 1] : null;
+        } else { // reverse
+            currentStop = stops[currentStopIndex];
+            nextStop = currentStopIndex < stops.length - 1 ? stops[currentStopIndex + 1] : null;
+        }
+
+        if (!currentStop || !nextStop) {
+          console.log("Prediction skipped: Could not determine current/next stop (likely at end of route).");
+          return;
+        }
+
+        // --- Arrival Time Prediction ---
         try {
-          console.log("Sending for prediction:", JSON.stringify(predictionInput, null, 2));
-          const res = await axios.post(`${ML_BACKEND_URL}/predict`, predictionInput);
-          
-          console.log("Prediction received:", res.data);
-          setPredictedPassengers(res.data.predicted_passengers);
-          setPredictedArrivalTime(res.data.predicted_arrival_time_min);
+          const arrivalTimeInput = {
+            origin: currentStop.stopName,
+            destination: nextStop.stopName,
+            distance: getDistance(currentStop.lat, currentStop.lng, nextStop.lat, nextStop.lng),
+            hour: hour,
+            minute: minute,
+          };
+          console.log("Sending for arrival time prediction:", JSON.stringify(arrivalTimeInput, null, 2));
+          const res = await apiClient.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
+          // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/arrival-time`, arrivalTimeInput);          
+          console.log("Arrival time prediction received:", res.data);
+          if (res.data.predicted_arrival_time_seconds) {
+            setPredictedArrivalTime(res.data.predicted_arrival_time_seconds / 60); // Convert to minutes
+          }
 
         } catch (err) {
-          console.error("Failed to get predictions:", err.response ? err.response.data : err.message);
+          console.error("Failed to get arrival time prediction:", err.response ? err.response.data : err.message);
+        }
+
+            // --- Total ETA to User's Destination ---
+        if (userOrigin && currentStopIndex !== -1) {
+            const destinationIndex = stops.findIndex(s => s.stopName === userOrigin);
+            
+            if (destinationIndex === -1) {
+                console.log("Could not find user destination in stops list.");
+                setTotalEtaToDestination(null);
+            } else {
+                let remainingStops = [];
+                // Handle based on direction
+                if (direction === 0) { // forward direction
+                    if (destinationIndex < currentStopIndex) {
+                        remainingStops = stops.slice(destinationIndex, currentStopIndex + 1).reverse();
+                    }
+                } else { // reverse direction
+                    if (destinationIndex > currentStopIndex) {
+                        remainingStops = stops.slice(currentStopIndex, destinationIndex + 1);
+                    }
+                }
+
+                if (remainingStops.length > 1) {
+                    let totalSeconds = 0;
+                    // Loop through remaining segments to predict and sum ETA
+                    for (let i = 0; i < remainingStops.length - 1; i++) {
+                        const segmentOrigin = remainingStops[i];
+                        const segmentDestination = remainingStops[i + 1];
+                        try {
+                            const arrivalTimeInput = {
+                                origin: segmentOrigin.stopName,
+                                destination: segmentDestination.stopName,
+                                distance: getDistance(segmentOrigin.lat, segmentOrigin.lng, segmentDestination.lat, segmentDestination.lng),
+                                hour: hour,
+                                minute: minute,
+                            };
+                            console.log("Sending for arrival time prediction:", JSON.stringify(arrivalTimeInput, null, 2));
+
+                            const res = await apiClient.post(`${ML_BACKEND_URL}/predict_arrival_time`, arrivalTimeInput);
+                            // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/arrival-time`, arrivalTimeInput);
+
+                            if (res.data.predicted_arrival_time_seconds) {
+                                totalSeconds += res.data.predicted_arrival_time_seconds;
+                            }
+                        } catch (err) {
+                            console.error(`Failed to get ETA for segment ${segmentOrigin.stopName} -> ${segmentDestination.stopName}:`, err.message);
+                            totalSeconds = -1;
+                            break;
+                        }
+                    }
+
+                    if (totalSeconds !== -1) {
+                        setTotalEtaToDestination(totalSeconds / 60); // Convert to minutes
+                    } else {
+                        setTotalEtaToDestination(null); // Clear if calculation failed
+                    }
+                } else {
+                    // Bus has passed the destination or is at the destination
+                    setTotalEtaToDestination(0);
+                    // Check if the bus is very close to the destination stop
+                    const destinationStop = stops[destinationIndex];
+                    if (destinationStop) {
+                        const distanceToDestination = getDistance(bus.location.latitude, bus.location.longitude, destinationStop.lat, destinationStop.lng);
+                        if (distanceToDestination < 0.1) { // If bus is within 100m of destination
+                            Alert.alert("You've Arrived!", `The bus has reached your destination: ${userOrigin}.`, [
+                                { text: "OK", onPress: () => handleEndTrip() }
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Passenger Flow Prediction ---
+        if (bus && bus.currentTrip) {
+          try {
+            // Get the last 3 records for the current trip
+            let records = await getLastThreeRecordsOfTrip(bus.currentTrip);
+            let sequence = [];
+            const paddingRecord = {
+              "month": 0, "day": 0, "Distance_km": 0, "hour": 0, "minute": 0,
+              "prev_load": 0, "holiday_type": "none", "day_type": "weekday",
+              "trip_direction": "0", "Origin": "PAD", "Route": "PAD"
+            };
+
+            // Prepare initial sequence (pad if needed)
+            if (records.length < 3) {
+              for (let i = 0; i < 3 - records.length; i++) {
+                sequence.push({ ...paddingRecord });
+              }
+              records.forEach(rec => {
+                const recordDate = rec && rec.Stamp && typeof rec.Stamp.seconds === 'number'
+                  ? new Date(rec.Stamp.seconds * 1000)
+                  : new Date();
+                sequence.push({
+                  "month": recordDate.getMonth() + 1,
+                  "day": recordDate.getDate(),
+                  "Distance_km": rec.Distance_km || 0,
+                  "hour": recordDate.getHours(),
+                  "minute": recordDate.getMinutes(),
+                  "prev_load": rec.passenger_load || 0,
+                  "holiday_type": "none",
+                  "day_type": (recordDate.getDay() === 0 || recordDate.getDay() === 6) ? 'weekend' : 'weekday',
+                  "trip_direction": bus.direction === 1 ? "1" : "0",
+                  "Origin": rec.Origin,
+                  "Route": currentRoute?.name || "Unknown Route"
+                });
+              });
+            } else {
+              // Use last 3 records, chronological order
+              sequence = records.map(rec => {
+                const recordDate = rec && rec.Stamp && typeof rec.Stamp.seconds === 'number'
+                  ? new Date(rec.Stamp.seconds * 1000)
+                  : new Date();
+                return {
+                  "month": recordDate.getMonth() + 1,
+                  "day": recordDate.getDate(),
+                  "Distance_km": rec.Distance_km || 0,
+                  "hour": recordDate.getHours(),
+                  "minute": recordDate.getMinutes(),
+                  "prev_load": rec.passenger_load || 0,
+                  "holiday_type": "none",
+                  "day_type": (recordDate.getDay() === 0 || recordDate.getDay() === 6) ? 'weekend' : 'weekday',
+                  "trip_direction": bus.direction === 1 ? "1" : "0",
+                  "Origin": rec.Origin,
+                  "Route": currentRoute?.name || "Unknown Route"
+                };
+              }).reverse();
+            }
+
+            // Find stops between current and user origin
+            let totalNetChange = 0;
+            let currentPassengers = bus.occupancy;
+            if (userOrigin && currentStopIndex !== undefined) {
+              const destinationIndex = stops.findIndex(s => s.stopName === userOrigin);
+              let remainingStops = [];
+              if (direction === 0) {
+                if (destinationIndex < currentStopIndex) {
+                  remainingStops = stops.slice(destinationIndex, currentStopIndex + 1).reverse();
+                }
+              } else {
+                if (destinationIndex > currentStopIndex) {
+                  remainingStops = stops.slice(currentStopIndex, destinationIndex + 1);
+                }
+              }
+
+              // For each segment, roll prediction
+              for (let i = 0; i < remainingStops.length - 1; i++) {
+                // Prepare input for this segment
+                // Use last 3 records in sequence
+                const passengerFlowInput = { sequence: sequence.slice(-3) };
+                const res = await apiClient.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+                // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/passenger-flow`, passengerFlowInput);
+                const netChange = res.data.net_change || 0;
+                totalNetChange += netChange;
+                console.log("Sending for arrival time prediction:", JSON.stringify(passengerFlowInput, null, 2));
+
+                // Prepare next input: shift sequence, add new predicted record
+                // Use the last record as template, but update prev_load and Origin/Route
+                const lastRecord = { ...sequence[sequence.length - 1] };
+                lastRecord.prev_load = (lastRecord.prev_load || 0) + netChange;
+                lastRecord.Origin = remainingStops[i + 1].stopName;
+                lastRecord.Route = currentRoute?.name || "Unknown Route";
+                // Optionally update time fields if needed
+                sequence.push(lastRecord);
+              }
+              setPredictedPassengers(currentPassengers + totalNetChange);
+            } else {
+              // Fallback: just predict next stop as before
+              const passengerFlowInput = { sequence: sequence.slice(-3) };
+              const res = await apiClient.post(`${ML_BACKEND_URL}/predict_passenger_flow`, passengerFlowInput);
+              // const res = await apiClient.post(`${ML_BACKEND_URL}/predict/passenger-flow`, passengerFlowInput);
+
+              const netChange = res.data.net_change || 0;
+                        console.log("Sending for arrival time prediction:", JSON.stringify(passengerFlowInput, null, 2));
+
+              setPredictedPassengers(currentPassengers + netChange);
+            }
+          } catch (err) {
+            console.error("Failed to get passenger flow prediction:", err.response ? err.response.data : err.message);
+          }
+        } else {
+          console.log(`No current trip associated with the bus for passenger flow prediction.`);
         }
       };
 
       getPredictions();
-    }, 3000); // Debounce for 3 seconds
+    }, 3000);
 
     // Cleanup function to clear the timeout if the component unmounts or dependencies change
     return () => clearTimeout(handler);
 
-  }, [bus, busroute]); // Rerun when bus or route data updates
+  }, [bus, routeDetails]); // Rerun when bus or route updates
 
   if (!passengerLocation || !bus) {
     return (
@@ -270,25 +494,32 @@ const CurrentTripScreen = ({ route }) => {
         buses={[bus]} 
         passengerLocation={passengerLocation}
         routePath={selectedRoutePath}
-        stops={routeStops} // Pass the stops to the map component
+        initialRegion = {{
+          latitude: bus.location.latitude,
+          longitude: bus.location.longitude}}
+        stops={routeStops}
+        routes={allRoutes}
       />
       <View style={styles.tripInfo}>
         <Text style={styles.tripInfoText}>Tracking Bus: {bus.busId}</Text>
+        <Text style={styles.tripInfoSubText}>{currentRoute?.name || 'Loading route...'}</Text>
+        <Text style={styles.tripInfoSubText}>From: {userOrigin} To: {userDestination}</Text>
         <Text style={styles.tripInfoSubText}>Status: {bus.status}</Text>
+        <Text style={styles.tripInfoSubText}>Current Load: {bus.occupancy}/{bus.capacity}</Text>
+                      
         
-        {/* Display Predictions in a structured container */}
-        {(predictedArrivalTime !== null || predictedPassengers !== null) && (
+        {(predictedArrivalTime !== null || predictedPassengers !== null || totalEtaToDestination !== null) && (
           <View style={styles.predictionsContainer}>
-            {predictedArrivalTime !== null && (
+             {totalEtaToDestination !== null && (
               <View style={styles.predictionItem}>
-                <Text style={styles.predictionLabel}>Next Stop ETA</Text>
-                <Text style={styles.predictionValue}>~{predictedArrivalTime.toFixed(2)} min</Text>
+                <Text style={styles.predictionLabel}>Arrival at {userOrigin}</Text>
+                <Text style={styles.predictionValue}>~{Math.floor(totalEtaToDestination)}m {Math.round((totalEtaToDestination % 1) * 60)}s</Text>
               </View>
             )}
             {predictedPassengers !== null && (
               <View style={styles.predictionItem}>
                 <Text style={styles.predictionLabel}>Est. Crowd</Text>
-                <Text style={styles.predictionValue}>{predictedPassengers} pax</Text>
+                <Text style={styles.predictionValue}>{Math.round(predictedPassengers)} pax</Text>
               </View>
             )}
           </View>
@@ -332,7 +563,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'gray',
     marginTop: 4,
-    marginBottom: 10, 
+    marginBottom: 5, 
   },
   predictionsContainer: {
     flexDirection: 'row',
