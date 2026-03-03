@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { 
-  Bus, 
-  Gauge, 
-  Users, 
-  CloudRain, 
+import {
+  Bus,
+  Gauge,
+  Users,
+  CloudRain,
   Sun,
   Navigation,
   RefreshCw
@@ -23,9 +23,9 @@ L.Icon.Default.mergeOptions({
 
 // Custom bus icon creator
 const createBusIcon = (status) => {
-  const color = status === 'online' ? '#10b981' : '#6b7280';
+  const color = status === 'online' ? '#10b981' : 'var(--gray-400)';
   const pulseAnimation = status === 'online' ? 'animation: markerPulse 2s infinite;' : '';
-  
+
   return L.divIcon({
     className: 'custom-bus-marker',
     html: `
@@ -57,7 +57,7 @@ const createBusIcon = (status) => {
 // Component to fit map bounds to markers
 function MapBoundsUpdater({ buses }) {
   const map = useMap();
-  
+
   useEffect(() => {
     if (buses.length > 0) {
       const bounds = L.latLngBounds(
@@ -66,13 +66,13 @@ function MapBoundsUpdater({ buses }) {
       map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [buses, map]);
-  
+
   return null;
 }
 
 function MapView() {
   const { mapData, loading, refetch } = useMapData();
-  
+
   // Default center (Colombo, Sri Lanka)
   const defaultCenter = [6.9271, 79.8612];
   const defaultZoom = 13;
@@ -101,19 +101,19 @@ function MapView() {
       <div className="stats-grid" style={{ marginBottom: 'var(--spacing-lg)' }}>
         <div className="card" style={{ padding: 'var(--spacing-md)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ 
-              width: '40px', 
-              height: '40px', 
-              background: 'rgba(16, 185, 129, 0.2)', 
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'rgba(16, 185, 129, 0.2)',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <span style={{ 
-                width: '12px', 
-                height: '12px', 
-                background: '#10b981', 
+              <span style={{
+                width: '12px',
+                height: '12px',
+                background: '#10b981',
                 borderRadius: '50%',
                 display: 'block',
                 animation: 'pulse 2s infinite'
@@ -121,43 +121,43 @@ function MapView() {
             </div>
             <div>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10b981' }}>{onlineBuses.length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase' }}>Online Buses</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase' }}>Online Buses</div>
             </div>
           </div>
         </div>
 
         <div className="card" style={{ padding: 'var(--spacing-md)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ 
-              width: '40px', 
-              height: '40px', 
-              background: 'rgba(107, 114, 128, 0.2)', 
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'rgba(107, 114, 128, 0.2)',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <span style={{ 
-                width: '12px', 
-                height: '12px', 
-                background: '#6b7280', 
+              <span style={{
+                width: '12px',
+                height: '12px',
+                background: 'var(--gray-400)',
                 borderRadius: '50%',
                 display: 'block'
               }}></span>
             </div>
             <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#6b7280' }}>{offlineBuses.length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase' }}>Offline Buses</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-400)' }}>{offlineBuses.length}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase' }}>Offline Buses</div>
             </div>
           </div>
         </div>
 
         <div className="card" style={{ padding: 'var(--spacing-md)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <Bus size={24} color="#3b82f6" />
+            <Bus size={24} color="#db046c" />
             <div>
               <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{mapData.length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase' }}>Total on Map</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', textTransform: 'uppercase' }}>Total on Map</div>
             </div>
           </div>
         </div>
@@ -180,9 +180,9 @@ function MapView() {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
               />
-              
+
               {mapData.length > 0 && <MapBoundsUpdater buses={mapData} />}
-              
+
               {mapData.map((bus) => (
                 <Marker
                   key={bus.vehicle_id}
@@ -190,22 +190,22 @@ function MapView() {
                   icon={createBusIcon(bus.status)}
                 >
                   <Popup>
-                    <div style={{ 
+                    <div style={{
                       minWidth: '200px',
-                      fontFamily: 'Inter, sans-serif'
+                      fontFamily: '"Plus Jakarta Sans", sans-serif'
                     }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
                         gap: '0.5rem',
                         marginBottom: '0.75rem',
                         paddingBottom: '0.75rem',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)'
+                        borderBottom: '1px solid var(--glass-border)'
                       }}>
-                        <Bus size={18} color="#3b82f6" />
+                        <Bus size={18} color="#db046c" />
                         <strong style={{ fontSize: '1rem' }}>{bus.vehicle_id}</strong>
-                        <span 
-                          style={{ 
+                        <span
+                          style={{
                             marginLeft: 'auto',
                             padding: '0.125rem 0.5rem',
                             borderRadius: '9999px',
@@ -219,41 +219,41 @@ function MapView() {
                           {bus.status}
                         </span>
                       </div>
-                      
+
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <Navigation size={14} color="#9ca3af" />
-                          <span style={{ color: '#e5e7eb' }}>{bus.location_name || 'Unknown'}</span>
+                          <span style={{ color: 'var(--gray-200)' }}>{bus.location_name || 'Unknown'}</span>
                         </div>
-                        
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Gauge size={14} color="#3b82f6" />
-                          <span style={{ color: '#e5e7eb' }}>
+                          <Gauge size={14} color="#db046c" />
+                          <span style={{ color: 'var(--gray-200)' }}>
                             <strong>{bus.safe_speed || 0}</strong> km/h safe speed
                           </span>
                         </div>
-                        
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <Users size={14} color="#f59e0b" />
-                          <span style={{ color: '#e5e7eb' }}>{bus.passenger_count || 0} passengers</span>
+                          <span style={{ color: 'var(--gray-200)' }}>{bus.passenger_count || 0} passengers</span>
                         </div>
-                        
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {bus.road_condition === 'Wet' ? (
-                            <CloudRain size={14} color="#60a5fa" />
+                            <CloudRain size={14} color="#e6669f" />
                           ) : (
                             <Sun size={14} color="#fbbf24" />
                           )}
-                          <span style={{ color: '#e5e7eb' }}>{bus.road_condition || 'Dry'} road</span>
+                          <span style={{ color: 'var(--gray-200)' }}>{bus.road_condition || 'Dry'} road</span>
                         </div>
                       </div>
-                      
-                      <div style={{ 
+
+                      <div style={{
                         marginTop: '0.75rem',
                         paddingTop: '0.75rem',
-                        borderTop: '1px solid rgba(255,255,255,0.1)',
+                        borderTop: '1px solid var(--glass-border)',
                         fontSize: '0.75rem',
-                        color: '#9ca3af'
+                        color: 'var(--gray-500)'
                       }}>
                         {bus.direction?.replace(/_/g, ' \u2192 ')}
                       </div>
@@ -273,24 +273,24 @@ function MapView() {
         </div>
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ 
-              width: '24px', 
-              height: '24px', 
-              background: '#10b981', 
-              borderRadius: '50%', 
-              border: '2px solid white' 
+            <div style={{
+              width: '24px',
+              height: '24px',
+              background: '#10b981',
+              borderRadius: '50%',
+              border: '2px solid white'
             }}></div>
-            <span style={{ color: '#9ca3af' }}>Online Bus</span>
+            <span style={{ color: 'var(--gray-500)' }}>Online Bus</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ 
-              width: '24px', 
-              height: '24px', 
-              background: '#6b7280', 
-              borderRadius: '50%', 
-              border: '2px solid white' 
+            <div style={{
+              width: '24px',
+              height: '24px',
+              background: 'var(--gray-400)',
+              borderRadius: '50%',
+              border: '2px solid white'
             }}></div>
-            <span style={{ color: '#9ca3af' }}>Offline Bus</span>
+            <span style={{ color: 'var(--gray-500)' }}>Offline Bus</span>
           </div>
         </div>
       </div>

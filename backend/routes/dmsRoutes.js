@@ -7,11 +7,13 @@ const express = require('express');
 const router = express.Router();
 const dmsService = require('../services/dmsService');
 
-// GET /api/dms/status  — latest state for all devices
+// GET /api/dms/status  — latest state for all devices (paginated)
 router.get('/status', async (req, res) => {
     try {
-        const states = await dmsService.getAllDMSStates();
-        res.json({ success: true, data: states });
+        const limit = parseInt(req.query.limit) || 6;
+        const page = parseInt(req.query.page) || 1;
+        const result = await dmsService.getAllDMSStates(limit, page);
+        res.json({ success: true, ...result });
     } catch (err) {
         console.error('DMS status error:', err);
         res.status(500).json({ success: false, error: err.message });
@@ -30,12 +32,12 @@ router.get('/status/:deviceKey', async (req, res) => {
     }
 });
 
-// GET /api/dms/events  — recent events (optional ?device_key=X&limit=N)
+// GET /api/dms/events  — recent events (optional ?device_key=X&limit=N&page=N)
 router.get('/events', async (req, res) => {
     try {
-        const { device_key, limit } = req.query;
-        const events = await dmsService.getDMSEvents(device_key || null, parseInt(limit) || 50);
-        res.json({ success: true, data: events });
+        const { device_key, limit, page } = req.query;
+        const result = await dmsService.getDMSEvents(device_key || null, parseInt(limit) || 10, parseInt(page) || 1);
+        res.json({ success: true, ...result });
     } catch (err) {
         console.error('DMS events error:', err);
         res.status(500).json({ success: false, error: err.message });

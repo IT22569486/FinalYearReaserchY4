@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Eye, 
-  AlertTriangle, 
-  Phone, 
-  ShieldOff, 
-  Moon, 
+import {
+  Eye,
+  AlertTriangle,
+  Phone,
+  ShieldOff,
+  Moon,
   Activity,
   RefreshCw,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { dmsService } from '../services/api';
 import socketService from '../services/socket';
@@ -17,19 +19,22 @@ import socketService from '../services/socket';
 // Severity colour map
 const SEVERITY_MAP = {
   critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.15)', label: 'Critical' },
-  danger:   { color: '#f97316', bg: 'rgba(249,115,22,0.15)', label: 'Danger' },
-  warning:  { color: '#eab308', bg: 'rgba(234,179,8,0.15)',  label: 'Warning' },
-  info:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', label: 'Info' },
+  danger: { color: '#f97316', bg: 'rgba(249,115,22,0.15)', label: 'Danger' },
+  warning: { color: '#eab308', bg: 'rgba(234,179,8,0.15)', label: 'Warning' },
+  info: { color: '#db046c', bg: 'rgba(219,4,108,0.15)', label: 'Info' },
 };
+
+const DEVICES_PER_PAGE = 6;
+const EVENTS_PER_PAGE = 10;
 
 // Icon by state
 function stateIcon(state) {
   const s = (state || '').toUpperCase();
-  if (s.includes('PHONE'))    return <Phone size={18} />;
-  if (s.includes('SLEEP'))    return <Moon size={18} />;
+  if (s.includes('PHONE')) return <Phone size={18} />;
+  if (s.includes('SLEEP')) return <Moon size={18} />;
   if (s.includes('SEATBELT')) return <ShieldOff size={18} />;
-  if (s.includes('DROWSY') || s.includes('YAWN'))  return <Eye size={18} />;
-  if (s.includes('ALERT'))    return <CheckCircle size={18} />;
+  if (s.includes('DROWSY') || s.includes('YAWN')) return <Eye size={18} />;
+  if (s.includes('ALERT')) return <CheckCircle size={18} />;
   return <AlertTriangle size={18} />;
 }
 
@@ -45,23 +50,69 @@ function severityBadge(severity) {
   );
 }
 
-function DriverMonitoring() {
-  const [states, setStates]     = useState([]);
-  const [events, setEvents]     = useState([]);
-  const [stats, setStats]       = useState(null);
-  const [loading, setLoading]   = useState(true);
+/** Render page number buttons with ellipsis for large page counts */
+function renderPageNumbers(currentPage, totalPages, onPageChange) {
+  const pages = [];
+  const delta = 2;
+  const left = Math.max(2, currentPage - delta);
+  const right = Math.min(totalPages - 1, currentPage + delta);
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
+  pages.push(
+    <button key={1} className={`pagination-btn${currentPage === 1 ? ' active' : ''}`} onClick={() => onPageChange(1)}>1</button>
+  );
+
+  if (left > 2) pages.push(<span key="el" className="pagination-ellipsis">…</span>);
+
+  for (let i = left; i <= right; i++) {
+    pages.push(
+      <button key={i} className={`pagination-btn${currentPage === i ? ' active' : ''}`} onClick={() => onPageChange(i)}>{i}</button>
+    );
+  }
+
+  if (right < totalPages - 1) pages.push(<span key="er" className="pagination-ellipsis">…</span>);
+
+  if (totalPages > 1) {
+    pages.push(
+      <button key={totalPages} className={`pagination-btn${currentPage === totalPages ? ' active' : ''}`} onClick={() => onPageChange(totalPages)}>{totalPages}</button>
+    );
+  }
+
+  return pages;
+}
+
+function DriverMonitoring() {
+  const [states, setStates] = useState([]);
+  const [totalDevices, setTotalDevices] = useState(0);
+  const [devicePages, setDevicePages] = useState(1);
+  const [events, setEvents] = useState([]);
+  const [totalEvents, setTotalEvents] = useState(0);
+  const [eventPages, setEventPages] = useState(1);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [devicePage, setDevicePage] = useState(1);
+  const [eventPage, setEventPage] = useState(1);
+
+  // Fetch data with current pagination
+  const fetchData = useCallback(async (devPage = 1, evPage = 1) => {
     setLoading(true);
     try {
       const [stRes, evRes, statsRes] = await Promise.all([
-        dmsService.getStatus(),
-        dmsService.getEvents(null, 30),
+        dmsService.getStatus(devPage, DEVICES_PER_PAGE),
+        dmsService.getEvents(null, EVENTS_PER_PAGE, evPage),
         dmsService.getStatistics(24),
       ]);
+      // States (paginated response)
       setStates(stRes.data || []);
+      setTotalDevices(stRes.total || 0);
+      setDevicePages(stRes.totalPages || 1);
+      setDevicePage(stRes.page || 1);
+
+      // Events (paginated response)
       setEvents(evRes.data || []);
+      setTotalEvents(evRes.total || 0);
+      setEventPages(evRes.totalPages || 1);
+      setEventPage(evRes.page || 1);
+
       setStats(statsRes.data || null);
     } catch (err) {
       console.error('DMS fetch error:', err);
@@ -71,30 +122,18 @@ function DriverMonitoring() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
+    fetchData(1, 1);
+    const interval = setInterval(() => fetchData(devicePage, eventPage), 15000);
 
     // Socket listeners
     const socket = socketService.connect();
     const onStateUpdate = (data) => {
-      setStates(prev => {
-        const idx = prev.findIndex(s => s.device_key === data.deviceKey);
-        const entry = {
-          device_key: data.deviceKey,
-          state: data.state,
-          details: data.details,
-          timestamp: data.timestamp,
-        };
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = { ...copy[idx], ...entry };
-          return copy;
-        }
-        return [entry, ...prev];
-      });
+      // Re-fetch current device page on state update
+      fetchData(devicePage, eventPage);
     };
     const onEvent = (data) => {
-      setEvents(prev => [data.event, ...prev].slice(0, 50));
+      // Re-fetch current event page on new event
+      fetchData(devicePage, eventPage);
     };
 
     socket.on('dmsStateUpdate', onStateUpdate);
@@ -105,7 +144,20 @@ function DriverMonitoring() {
       socket.off('dmsStateUpdate', onStateUpdate);
       socket.off('dmsEvent', onEvent);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchData]);
+
+  // Device page change handler
+  const handleDevicePageChange = (page) => {
+    setDevicePage(page);
+    fetchData(page, eventPage);
+  };
+
+  // Event page change handler
+  const handleEventPageChange = (page) => {
+    setEventPage(page);
+    fetchData(devicePage, page);
+  };
 
   // ---- Render ----
   return (
@@ -113,18 +165,18 @@ function DriverMonitoring() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#f1f5f9' }}>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--gray-100)' }}>
             <Eye style={{ verticalAlign: 'middle', marginRight: 8 }} size={22} />
             Driver Monitoring System
           </h1>
-          <p style={{ margin: '0.25rem 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--gray-400)', fontSize: '0.875rem' }}>
             Real-time drowsiness, distraction &amp; safety tracking
           </p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={() => fetchData(devicePage, eventPage)}
           disabled={loading}
-          style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '8px 16px', color: '#cbd5e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ background: 'var(--bg-dark-secondary)', border: '1px solid #334155', borderRadius: 8, padding: '8px 16px', color: 'var(--gray-300)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
         </button>
@@ -133,7 +185,7 @@ function DriverMonitoring() {
       {/* Statistics cards */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-          <StatCard label="Total Events (24h)" value={stats.total} icon={<Activity size={20} />} color="#3b82f6" />
+          <StatCard label="Total Events (24h)" value={stats.total} icon={<Activity size={20} />} color="#db046c" />
           <StatCard label="Critical" value={stats.bySeverity?.critical || 0} icon={<XCircle size={20} />} color="#ef4444" />
           <StatCard label="Warnings" value={stats.bySeverity?.warning || 0} icon={<AlertTriangle size={20} />} color="#eab308" />
           <StatCard label="Danger" value={stats.bySeverity?.danger || 0} icon={<Moon size={20} />} color="#f97316" />
@@ -142,27 +194,45 @@ function DriverMonitoring() {
 
       {/* Live device states */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', marginBottom: '0.75rem' }}>Live Device States</h2>
+        <h2 style={{ fontSize: '1.1rem', color: 'var(--gray-100)', marginBottom: '0.75rem' }}>Live Device States ({totalDevices})</h2>
         {states.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
+          <div className="card" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '2rem' }}>
             No devices reporting DMS data yet.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-            {states.map(s => (
-              <DeviceStateCard key={s.device_key || s.id} data={s} />
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+              {states.map(s => (
+                <DeviceStateCard key={s.device_key || s.id} data={s} />
+              ))}
+            </div>
+
+            {/* Device Pagination */}
+            {devicePages > 1 && (
+              <div className="pagination">
+                <button className="pagination-btn" disabled={devicePage <= 1} onClick={() => handleDevicePageChange(devicePage - 1)}>
+                  <ChevronLeft size={16} />
+                </button>
+                {renderPageNumbers(devicePage, devicePages, handleDevicePageChange)}
+                <button className="pagination-btn" disabled={devicePage >= devicePages} onClick={() => handleDevicePageChange(devicePage + 1)}>
+                  <ChevronRight size={16} />
+                </button>
+                <span className="pagination-info">
+                  Page {devicePage} of {devicePages} ({totalDevices} devices)
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Recent events */}
       <div>
-        <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', marginBottom: '0.75rem' }}>Recent Alerts</h2>
+        <h2 style={{ fontSize: '1.1rem', color: 'var(--gray-100)', marginBottom: '0.75rem' }}>Recent Alerts ({totalEvents})</h2>
         <div className="card" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', textAlign: 'left' }}>
+              <tr style={{ borderBottom: '1px solid #334155', color: 'var(--gray-400)', textAlign: 'left' }}>
                 <th style={thStyle}>Time</th>
                 <th style={thStyle}>Device</th>
                 <th style={thStyle}>Event</th>
@@ -172,7 +242,7 @@ function DriverMonitoring() {
             </thead>
             <tbody>
               {events.length === 0 ? (
-                <tr><td colSpan={5} style={{ ...tdStyle, color: '#64748b', textAlign: 'center' }}>No recent events</td></tr>
+                <tr><td colSpan={5} style={{ ...tdStyle, color: 'var(--gray-500)', textAlign: 'center' }}>No recent events</td></tr>
               ) : events.map((ev, i) => (
                 <tr key={ev.id || i} style={{ borderBottom: '1px solid #1e293b' }}>
                   <td style={tdStyle}>
@@ -189,6 +259,22 @@ function DriverMonitoring() {
               ))}
             </tbody>
           </table>
+
+          {/* Event Pagination */}
+          {eventPages > 1 && (
+            <div className="pagination">
+              <button className="pagination-btn" disabled={eventPage <= 1} onClick={() => handleEventPageChange(eventPage - 1)}>
+                <ChevronLeft size={16} />
+              </button>
+              {renderPageNumbers(eventPage, eventPages, handleEventPageChange)}
+              <button className="pagination-btn" disabled={eventPage >= eventPages} onClick={() => handleEventPageChange(eventPage + 1)}>
+                <ChevronRight size={16} />
+              </button>
+              <span className="pagination-info">
+                Page {eventPage} of {eventPages} ({totalEvents} events)
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -202,8 +288,8 @@ function StatCard({ label, value, icon, color }) {
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem' }}>
       <div style={{ color, opacity: 0.85 }}>{icon}</div>
       <div>
-        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f1f5f9' }}>{value}</div>
-        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{label}</div>
+        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gray-100)' }}>{value}</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--gray-400)' }}>{label}</div>
       </div>
     </div>
   );
@@ -212,21 +298,21 @@ function StatCard({ label, value, icon, color }) {
 function DeviceStateCard({ data }) {
   const sev = (data.state || '').includes('ALERT') ? 'info'
     : (data.state || '').includes('PHONE') || (data.state || '').includes('SLEEP') || (data.state || '').includes('HEAD_TURNED') || (data.state || '').includes('SEATBELT') ? 'critical'
-    : (data.state || '').includes('DROWSY') || (data.state || '').includes('YAWN') || (data.state || '').includes('HANDS') ? 'warning'
-    : 'info';
+      : (data.state || '').includes('DROWSY') || (data.state || '').includes('YAWN') || (data.state || '').includes('HANDS') ? 'warning'
+        : 'info';
   const s = SEVERITY_MAP[sev];
 
   return (
     <div className="card" style={{ borderLeft: `3px solid ${s.color}`, padding: '1rem 1.25rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: '#e2e8f0' }}>{data.device_key}</span>
+        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--gray-100)' }}>{data.device_key}</span>
         {severityBadge(sev)}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: s.color, fontWeight: 600, fontSize: '1.1rem', marginBottom: 8 }}>
         {stateIcon(data.state)} {data.state}
       </div>
       {data.details && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: '0.78rem', color: '#94a3b8' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: '0.78rem', color: 'var(--gray-400)' }}>
           {data.details.ear != null && <span>EAR: {data.details.ear}</span>}
           {data.details.mar != null && <span>MAR: {data.details.mar}</span>}
           {data.details.yaw != null && <span>Yaw: {data.details.yaw}°</span>}
@@ -245,6 +331,6 @@ function DeviceStateCard({ data }) {
 }
 
 const thStyle = { padding: '8px 12px', fontWeight: 600 };
-const tdStyle = { padding: '8px 12px', color: '#cbd5e1' };
+const tdStyle = { padding: '8px 12px', color: 'var(--gray-300)' };
 
 export default DriverMonitoring;

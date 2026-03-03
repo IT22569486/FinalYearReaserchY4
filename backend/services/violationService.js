@@ -71,24 +71,29 @@ async function getAllViolations(filters = {}) {
 }
 
 /**
- * Get violations by device key
+ * Get violations by device key (with pagination)
  */
-async function getViolationsByDevice(deviceKey, limit = 50) {
-  // Simple query without orderBy to avoid index requirement
+async function getViolationsByDevice(deviceKey, limit = 50, page = 1) {
+  // Get all matching docs for this device to support proper pagination
   const snapshot = await violationsCollection
     .where("deviceKey", "==", deviceKey)
-    .limit(limit * 2) // Get more to sort in memory
     .get();
 
-  // Sort in memory and limit
-  const violations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  return violations
+  // Sort in memory
+  const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     .sort((a, b) => {
       const timeA = a.createdAt?._seconds || 0;
       const timeB = b.createdAt?._seconds || 0;
       return timeB - timeA;
-    })
-    .slice(0, limit);
+    });
+
+  const total = all.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * limit;
+  const violations = all.slice(start, start + limit);
+
+  return { violations, total, page: safePage, limit, totalPages };
 }
 
 /**

@@ -91,7 +91,7 @@ function BusDetail() {
           </div>
           <div className="stat-value">
             {bus.safe_speed || 0}
-            <span style={{ fontSize: '1rem', fontWeight: 400, color: '#9ca3af' }}> km/h</span>
+            <span style={{ fontSize: '1rem', fontWeight: 400, color: 'var(--gray-500)' }}> km/h</span>
           </div>
           <div className="stat-label">ML Predicted Speed</div>
         </div>
@@ -170,7 +170,7 @@ function BusDetail() {
             <div className="info-item">
               <span className="info-label">Humidity</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Droplets size={16} color="#3b82f6" />
+                <Droplets size={16} color="#db046c" />
                 <span className="info-value">{bus.humidity || 0}%</span>
               </div>
             </div>
@@ -203,24 +203,24 @@ function BusDetail() {
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="speedGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#db046c" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#db046c" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                  <XAxis dataKey="time" tick={{ fill: 'var(--gray-500)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'var(--gray-500)', fontSize: 12 }} />
                   <Tooltip 
                     contentStyle={{ 
-                      background: '#1e293b', 
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: 'var(--bg-dark-secondary)', 
+                      border: '1px solid var(--glass-border)',
                       borderRadius: '8px'
                     }}
                   />
                   <Area 
                     type="monotone" 
                     dataKey="speed" 
-                    stroke="#3b82f6" 
+                    stroke="#db046c" 
                     strokeWidth={2}
                     fill="url(#speedGradient)" 
                     name="Safe Speed (km/h)"
@@ -253,7 +253,7 @@ function BusDetail() {
                 </div>
                 <div className="timeline-content">
                   <div className="timeline-location">
-                    <MapPin size={14} style={{ display: 'inline', marginRight: '0.5rem', color: '#3b82f6' }} />
+                    <MapPin size={14} style={{ display: 'inline', marginRight: '0.5rem', color: '#db046c' }} />
                     {record.location_name || 'Unknown Location'}
                   </div>
                   <div className="timeline-details">

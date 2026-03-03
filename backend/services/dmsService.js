@@ -50,11 +50,17 @@ async function addDMSEvent(payload) {
 }
 
 /**
- * Get latest DMS state for all devices
+ * Get latest DMS state for all devices (with pagination)
  */
-async function getAllDMSStates() {
+async function getAllDMSStates(limit = 6, page = 1) {
     const snapshot = await db.collection(DMS_COLLECTION).get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    const data = all.slice(start, start + limit);
+    return { data, total, page: safePage, limit, totalPages };
 }
 
 /**
@@ -67,19 +73,24 @@ async function getDMSState(deviceKey) {
 }
 
 /**
- * Get DMS events/alerts, optionally filtered by device key
+ * Get DMS events/alerts, optionally filtered by device key (with pagination)
  */
-async function getDMSEvents(deviceKey = null, limit = 50) {
-    let query = db.collection(DMS_EVENTS_COLLECTION)
-        .orderBy('createdAt', 'desc')
-        .limit(limit);
+async function getDMSEvents(deviceKey = null, limit = 10, page = 1) {
+    let query = db.collection(DMS_EVENTS_COLLECTION);
 
     if (deviceKey) {
         query = query.where('device_key', '==', deviceKey);
     }
 
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Get all matching to compute total count, then paginate in memory
+    const snapshot = await query.orderBy('createdAt', 'desc').get();
+    const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    const data = all.slice(start, start + limit);
+    return { data, total, page: safePage, limit, totalPages };
 }
 
 /**

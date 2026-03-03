@@ -45,7 +45,7 @@ function BusList() {
           <div className="empty-state">
             <Bus size={48} style={{ opacity: 0.5 }} />
             <p>No buses found</p>
-            <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            <p style={{ fontSize: '0.875rem', color: 'var(--gray-400)' }}>
               {buses.length === 0 
                 ? 'Devices will appear here once connected'
                 : 'Try adjusting your search or filters'}
@@ -77,13 +77,13 @@ function BusList() {
                   >
                     <td style={{ fontWeight: 600 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Bus size={16} color="#3b82f6" />
+                        <Bus size={16} color="#db046c" />
                         {bus.vehicle_id}
                       </div>
                     </td>
                     <td>{bus.route_id}</td>
                     <td>{bus.location_name || 'Unknown'}</td>
-                    <td style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                    <td style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
                       {bus.direction?.replace(/_/g, ' \u2192 ') || '-'}
                     </td>
                     <td>
@@ -110,7 +110,7 @@ function BusList() {
                         {bus.status}
                       </span>
                     </td>
-                    <td style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                    <td style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
                       {bus.last_update 
                         ? new Date(bus.last_update).toLocaleTimeString()
                         : '-'}

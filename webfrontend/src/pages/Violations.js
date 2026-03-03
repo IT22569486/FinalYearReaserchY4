@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  AlertTriangle, 
-  Phone, 
+import {
+  AlertTriangle,
+  Phone,
   Eye,
-  Shield, 
+  Shield,
   ShieldOff,
   Moon,
   RefreshCw,
-  Clock,
   Car,
   Bus,
   ChevronRight,
@@ -21,12 +20,12 @@ import socketService from '../services/socket';
 const SEVERITY_CONFIG = { // eslint-disable-line no-unused-vars
   HIGH: { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', label: 'High' },
   MEDIUM: { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', label: 'Medium' },
-  LOW: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: 'Low' },
+  LOW: { color: '#db046c', bg: 'rgba(219,4,108,0.12)', label: 'Low' },
   CRITICAL: { color: '#dc2626', bg: 'rgba(220,38,38,0.12)', label: 'Critical' },
   critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.12)', label: 'Critical' },
   danger: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', label: 'Danger' },
   warning: { color: '#eab308', bg: 'rgba(234,179,8,0.12)', label: 'Warning' },
-  info: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: 'Info' },
+  info: { color: '#db046c', bg: 'rgba(219,4,108,0.12)', label: 'Info' },
 };
 
 function violationIcon(type) {
@@ -50,7 +49,7 @@ function getBusCardColor(totalViolations, maxViolations) {
   if (ratio >= 0.75) return { bg: 'rgba(220,38,38,0.18)', border: 'rgba(220,38,38,0.5)', text: '#ef4444' };
   if (ratio >= 0.5) return { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)', text: '#f87171' };
   if (ratio >= 0.25) return { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', text: '#f59e0b' };
-  return { bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)', text: '#60a5fa' };
+  return { bg: 'rgba(219,4,108,0.08)', border: 'rgba(219,4,108,0.2)', text: '#e6669f' };
 }
 
 function Violations() {
@@ -210,14 +209,7 @@ function Violations() {
           <div className="stat-label">Violations Today</div>
         </div>
 
-        <div className="card stat-card">
-          <div className="card-header">
-            <span className="card-title">Pending</span>
-            <div className="card-icon" style={{ background: '#f97316' }}><Clock size={20} color="white" /></div>
-          </div>
-          <div className="stat-value" style={{ color: '#f97316' }}>{statusCounts.pending || 0}</div>
-          <div className="stat-label">Awaiting Review</div>
-        </div>
+
 
         <div className="card stat-card">
           <div className="card-header">
@@ -332,14 +324,7 @@ function Violations() {
                         {bus.todayCount} today
                       </span>
                     )}
-                    {bus.pendingCount > 0 && (
-                      <span style={{
-                        padding: '2px 10px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600,
-                        color: '#f97316', background: 'rgba(249,115,22,0.12)',
-                      }}>
-                        {bus.pendingCount} pending
-                      </span>
-                    )}
+
                   </div>
 
                   {/* Top violation types */}

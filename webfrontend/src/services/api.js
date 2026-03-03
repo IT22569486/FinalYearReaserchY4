@@ -69,9 +69,9 @@ export default api;
 
 // Driver Monitoring System (DMS) API Services
 export const dmsService = {
-  // Get latest state for all devices
-  getStatus: async () => {
-    const response = await api.get('/api/dms/status');
+  // Get latest state for all devices (paginated)
+  getStatus: async (page = 1, limit = 6) => {
+    const response = await api.get('/api/dms/status', { params: { page, limit } });
     return response.data;
   },
 
@@ -81,11 +81,10 @@ export const dmsService = {
     return response.data;
   },
 
-  // Get recent DMS events
-  getEvents: async (deviceKey = null, limit = 50) => {
-    const params = {};
+  // Get recent DMS events (paginated)
+  getEvents: async (deviceKey = null, limit = 10, page = 1) => {
+    const params = { limit, page };
     if (deviceKey) params.device_key = deviceKey;
-    if (limit) params.limit = limit;
     const response = await api.get('/api/dms/events', { params });
     return response.data;
   },

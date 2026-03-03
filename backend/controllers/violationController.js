@@ -14,7 +14,7 @@ exports.getViolations = async (req, res) => {
       status: req.query.status,
       limit: parseInt(req.query.limit) || 100
     };
-    
+
     const violations = await violationService.getAllViolations(filters);
     res.json(violations);
   } catch (err) {
@@ -65,12 +65,12 @@ exports.createViolation = async (req, res) => {
         _localOnly: true,
       };
     }
-    
+
     // Emit socket event for real-time dashboard update (always)
     if (req.io) {
       req.io.emit("newViolation", { violation, deviceKey: violation.deviceKey, timestamp: new Date().toISOString() });
     }
-    
+
     res.status(201).json(violation);
   } catch (err) {
     res.status(500).json({ error: "Error creating violation", details: err.message });
@@ -85,16 +85,16 @@ exports.updateStatus = async (req, res) => {
   try {
     const { status, notes } = req.body;
     const violation = await violationService.updateViolationStatus(req.params.id, status, notes);
-    
+
     if (!violation) {
       return res.status(404).json({ message: "Violation not found" });
     }
-    
+
     // Emit socket event
     if (req.io) {
       req.io.emit("violationUpdated", violation);
     }
-    
+
     res.json(violation);
   } catch (err) {
     res.status(500).json({ error: "Error updating violation", details: err.message });
@@ -107,12 +107,13 @@ exports.updateStatus = async (req, res) => {
  */
 exports.getByDevice = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const violations = await violationService.getViolationsByDevice(req.params.deviceKey, limit);
-    res.json(violations);
+    const limit = parseInt(req.query.limit) || 10;
+    const page = parseInt(req.query.page) || 1;
+    const result = await violationService.getViolationsByDevice(req.params.deviceKey, limit, page);
+    res.json(result);
   } catch (err) {
     console.warn('Device violations fetch failed:', err.message);
-    res.json([]);
+    res.json({ violations: [], total: 0, page: 1, limit: 10, totalPages: 0 });
   }
 };
 
@@ -157,12 +158,12 @@ exports.deleteViolation = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: "Violation not found" });
     }
-    
+
     // Emit socket event
     if (req.io) {
       req.io.emit("violationDeleted", { id: req.params.id });
     }
-    
+
     res.json({ message: "Violation deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: "Error deleting violation", details: err.message });
