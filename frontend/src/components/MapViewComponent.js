@@ -7,12 +7,17 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
   const mapRef = useRef(null);
 
   // Use passenger's location for the region if no initial region is provided
-  const region = initialRegion || {
+  const region = initialRegion || (passengerLocation ? {
     latitude: passengerLocation.latitude,
     longitude: passengerLocation.longitude,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
-  };
+  } : {
+    latitude: 6.9271,
+    longitude: 79.8612,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
 
   useEffect(() => {
     if (mapRef.current && routePath && routePath.length > 0) {
@@ -62,15 +67,17 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
 
       {/* Render a marker for each bus */}
       {buses.map((bus) => {
+        // Support both {lat,lng} and {latitude,longitude} location formats
+        const loc = bus.location || {};
+        const lat = loc.latitude ?? loc.lat ?? bus.latitude ?? null;
+        const lng = loc.longitude ?? loc.lng ?? bus.longitude ?? null;
+        if (lat == null || lng == null) return null; // skip buses with no location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';
         return (
           <Marker
             key={bus.busId}
-            coordinate={{
-              latitude: bus.location.lat,
-              longitude: bus.location.lng,
-            }}
+            coordinate={{ latitude: lat, longitude: lng }}
             title={`Bus ${bus.busId}`}
             onPress={() => onBusPress && onBusPress(bus)}
             zIndex={150}
@@ -81,7 +88,7 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
                 <Text style={styles.calloutTitle}>{routeName}</Text>
                 <Text style={styles.calloutBusId}>{`Bus ${bus.busId}`}</Text>
                 <Text style={styles.calloutText}>{`Status: ${bus.status}`}</Text>
-                <Text style={styles.calloutText}>{`Location: ${bus.location.lat}, ${bus.location.lng}`}</Text>
+                <Text style={styles.calloutText}>{`Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`}</Text>
                 <Text style={styles.calloutText}>{`Current Load: ${bus.occupancy}/${bus.capacity}`}</Text>
               </View>
             </Callout>

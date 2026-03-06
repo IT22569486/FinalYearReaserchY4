@@ -20,7 +20,7 @@
   "license": "ISC",
   "dependencies": {
     "@mapbox/polyline": "^1.2.1",
-    "aedes": "^1.0.0",
+    "aedes": "^0.51.3",
     "axios": "^1.13.5",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",

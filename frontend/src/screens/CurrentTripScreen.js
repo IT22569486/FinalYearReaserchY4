@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'; 
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import io from 'socket.io-client';
@@ -7,6 +7,7 @@ import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapViewComponent from '../components/MapViewComponent';
+import BusSafetyCard from '../components/BusSafetyCard';
 import { BACKEND_URL, ML_BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
@@ -78,6 +79,9 @@ const CurrentTripScreen = ({ route }) => {
       try {
         await updateLastActivity();
         await refreshSession();
+
+        // Save this bus as the last tracked bus (for HomeScreen safety card)
+        await AsyncStorage.setItem('lastTrackedBusId', busId);
 
         // Fetch the specific bus
         const busRes = await apiClient.get(`/api/bus/${busId}`);
@@ -208,10 +212,12 @@ const CurrentTripScreen = ({ route }) => {
         // Find the closest stop via GPS as a fallback and for distance checks
         let closestStopIndex = -1;
         let minDistance = Infinity;
+        const busLat = bus.location?.latitude ?? bus.location?.lat ?? bus.latitude ?? 0;
+        const busLng = bus.location?.longitude ?? bus.location?.lng ?? bus.longitude ?? 0;
         stops.forEach((stop, index) => {
             const distance = getDistance(
-              bus.location.latitude,
-              bus.location.longitude,
+              busLat,
+              busLng,
               stop.lat,
               stop.lng
             );
@@ -347,7 +353,9 @@ const CurrentTripScreen = ({ route }) => {
                     // Check if the bus is very close to the destination stop
                     const destinationStop = stops[destinationIndex];
                     if (destinationStop) {
-                        const distanceToDestination = getDistance(bus.location.latitude, bus.location.longitude, destinationStop.lat, destinationStop.lng);
+                        const _busLat = bus.location?.latitude ?? bus.location?.lat ?? bus.latitude ?? 0;
+                        const _busLng = bus.location?.longitude ?? bus.location?.lng ?? bus.longitude ?? 0;
+                        const distanceToDestination = getDistance(_busLat, _busLng, destinationStop.lat, destinationStop.lng);
                         if (distanceToDestination < 0.1) { // If bus is within 100m of destination
                             Alert.alert("You've Arrived!", `The bus has reached your destination: ${userOrigin}.`, [
                                 { text: "OK", onPress: () => handleEndTrip() }
@@ -494,41 +502,57 @@ const CurrentTripScreen = ({ route }) => {
         buses={[bus]} 
         passengerLocation={passengerLocation}
         routePath={selectedRoutePath}
-        initialRegion = {{
-          latitude: bus.location.latitude,
-          longitude: bus.location.longitude}}
+        initialRegion={(bus.location || bus.latitude) ? {
+          latitude: bus.location?.latitude ?? bus.location?.lat ?? bus.latitude,
+          longitude: bus.location?.longitude ?? bus.location?.lng ?? bus.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        } : undefined}
         stops={routeStops}
         routes={allRoutes}
       />
-      <View style={styles.tripInfo}>
-        <Text style={styles.tripInfoText}>Tracking Bus: {bus.busId}</Text>
-        <Text style={styles.tripInfoSubText}>{currentRoute?.name || 'Loading route...'}</Text>
-        <Text style={styles.tripInfoSubText}>From: {userOrigin} To: {userDestination}</Text>
-        <Text style={styles.tripInfoSubText}>Status: {bus.status}</Text>
-        <Text style={styles.tripInfoSubText}>Current Load: {bus.occupancy}/{bus.capacity}</Text>
-                      
-        
-        {(predictedArrivalTime !== null || predictedPassengers !== null || totalEtaToDestination !== null) && (
-          <View style={styles.predictionsContainer}>
-             {totalEtaToDestination !== null && (
-              <View style={styles.predictionItem}>
-                <Text style={styles.predictionLabel}>Arrival at {userOrigin}</Text>
-                <Text style={styles.predictionValue}>~{Math.floor(totalEtaToDestination)}m {Math.round((totalEtaToDestination % 1) * 60)}s</Text>
-              </View>
-            )}
-            {predictedPassengers !== null && (
-              <View style={styles.predictionItem}>
-                <Text style={styles.predictionLabel}>Est. Crowd</Text>
-                <Text style={styles.predictionValue}>{Math.round(predictedPassengers)} pax</Text>
-              </View>
-            )}
-          </View>
-        )}
+      <ScrollView 
+        style={styles.tripInfoContainer}
+        contentContainerStyle={styles.tripInfoContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Safety Score Card */}
+        <BusSafetyCard 
+          busId={bus.busId} 
+          route={currentRoute?.name || 'Loading route...'} 
+        />
 
-        <TouchableOpacity style={styles.endTripButton} onPress={handleEndTrip}>
-          <Text style={styles.endTripButtonText}>End Trip</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Existing Trip Info */}
+        <View style={styles.tripInfo}>
+          <Text style={styles.tripInfoText}>Tracking Bus: {bus.busId}</Text>
+          <Text style={styles.tripInfoSubText}>{currentRoute?.name || 'Loading route...'}</Text>
+          <Text style={styles.tripInfoSubText}>From: {userOrigin} To: {userDestination}</Text>
+          <Text style={styles.tripInfoSubText}>Status: {bus.status}</Text>
+          <Text style={styles.tripInfoSubText}>Current Load: {bus.occupancy}/{bus.capacity}</Text>
+                        
+          
+          {(predictedArrivalTime !== null || predictedPassengers !== null || totalEtaToDestination !== null) && (
+            <View style={styles.predictionsContainer}>
+               {totalEtaToDestination !== null && (
+                <View style={styles.predictionItem}>
+                  <Text style={styles.predictionLabel}>Arrival at {userOrigin}</Text>
+                  <Text style={styles.predictionValue}>~{Math.floor(totalEtaToDestination)}m {Math.round((totalEtaToDestination % 1) * 60)}s</Text>
+                </View>
+              )}
+              {predictedPassengers !== null && (
+                <View style={styles.predictionItem}>
+                  <Text style={styles.predictionLabel}>Est. Crowd</Text>
+                  <Text style={styles.predictionValue}>{Math.round(predictedPassengers)} pax</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.endTripButton} onPress={handleEndTrip}>
+            <Text style={styles.endTripButtonText}>End Trip</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -540,11 +564,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: 'gray',
   },
-  tripInfo: {
+  tripInfoContainer: {
     position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '60%',
+  },
+  tripInfoContent: {
+    paddingBottom: 20,
+  },
+  tripInfo: {
+    marginHorizontal: 20,
+    marginBottom: 10,
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,

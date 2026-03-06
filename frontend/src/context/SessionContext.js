@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
-import { activateKeepAwake, deactivateKeepAwake } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { 
   isTokenExpired, 
   getTimeUntilExpiration, 
@@ -17,7 +17,7 @@ const SessionContext = createContext();
 export const useSession = () => useContext(SessionContext);
 
 // Screen lock timeout in minutes
-const SCREEN_LOCK_TIMEOUT = 20/60;
+const SCREEN_LOCK_TIMEOUT = 20; // 20 minutes
 
 export const SessionProvider = ({ children }) => {
   const navigation = useNavigation();
@@ -33,7 +33,7 @@ export const SessionProvider = ({ children }) => {
     setupScreenLockMonitoring();
     
     // Keep screen awake initially
-    activateKeepAwake('app-active');
+    activateKeepAwakeAsync('app-active');
     
     // Monitor app state changes
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -98,7 +98,7 @@ export const SessionProvider = ({ children }) => {
     
     // Check for inactivity every minute
     inactivityTimerRef.current = setInterval(async () => {
-      const userInactive = await isInactive(20/60); // 30 minutes
+      const userInactive = await isInactive(20); // 20 minutes
       
       if (userInactive) {
         handleLogout('Session expired due to inactivity');
@@ -133,7 +133,7 @@ export const SessionProvider = ({ children }) => {
     setIsScreenLocked(false);
     await updateLastActivity();
     // Resume keeping screen awake
-    activateKeepAwake('app-active');
+    activateKeepAwakeAsync('app-active');
   };
 
   const handleLogout = async (reason = 'Session ended') => {
@@ -171,7 +171,7 @@ export const SessionProvider = ({ children }) => {
     // Unlock screen when session is refreshed
     if (isScreenLocked) {
       setIsScreenLocked(false);
-      activateKeepAwake('app-active');
+      activateKeepAwakeAsync('app-active');
     }
   };
 

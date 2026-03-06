@@ -28,9 +28,9 @@ function setSocketIO(socketIO) {
  */
 async function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
     try {
-        // Dynamically import aedes ES module
-        const aedesModule = await import('aedes');
-        aedes = aedesModule.default();
+        // Require aedes (CommonJS module in v0.x)
+        const Aedes = require('aedes');
+        aedes = Aedes();
         
         // Create TCP server for MQTT
         const mqttServer = net.createServer(aedes.handle);
