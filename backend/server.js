@@ -1,5 +1,5 @@
 // server.js
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -78,7 +78,9 @@ const notificationRoutes = require("./routes/notificationRoutes");
 // =============================================================================
 const deviceRoutes = require("./routes/deviceRoutes");
 const violationRoutes = require("./routes/violationRoutes");
-const fleetRoutes = require("./routes/fleetRoutes");const dmsRoutes = require('./routes/dmsRoutes');
+const fleetRoutes = require("./routes/fleetRoutes");
+const dmsRoutes = require('./routes/dmsRoutes');
+const safetyScoreRoutes = require('./routes/safetyScoreRoutes');
 // =============================================================================
 // MOUNT ROUTES
 // =============================================================================
@@ -101,6 +103,9 @@ app.use("/api/fleet", fleetRoutes);
 
 // Driver Monitoring System routes
 app.use("/api/dms", dmsRoutes);
+
+// Safety Score routes
+app.use("/api", safetyScoreRoutes);
 
 // Dashboard route - serve index.html for all non-API routes
 // Note: Using app.use() instead of app.get('*') to avoid path-to-regexp parsing issues

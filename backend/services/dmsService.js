@@ -76,15 +76,29 @@ async function getDMSState(deviceKey) {
  * Get DMS events/alerts, optionally filtered by device key (with pagination)
  */
 async function getDMSEvents(deviceKey = null, limit = 10, page = 1) {
-    let query = db.collection(DMS_EVENTS_COLLECTION);
+    let snapshot;
 
     if (deviceKey) {
-        query = query.where('device_key', '==', deviceKey);
+        // Single-field where — no composite index needed; sort in memory
+        snapshot = await db.collection(DMS_EVENTS_COLLECTION)
+            .where('device_key', '==', deviceKey)
+            .get();
+    } else {
+        // No where clause — single-field orderBy is auto-indexed
+        snapshot = await db.collection(DMS_EVENTS_COLLECTION)
+            .orderBy('createdAt', 'desc')
+            .limit(500)
+            .get();
     }
 
-    // Get all matching to compute total count, then paginate in memory
-    const snapshot = await query.orderBy('createdAt', 'desc').get();
-    const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const all = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+            const ta = typeof a.createdAt === 'string' ? a.createdAt : a.createdAt?.toDate?.()?.toISOString?.() || '';
+            const tb = typeof b.createdAt === 'string' ? b.createdAt : b.createdAt?.toDate?.()?.toISOString?.() || '';
+            return tb.localeCompare(ta); // descending
+        });
+
     const total = all.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const safePage = Math.min(page, totalPages);
@@ -99,13 +113,19 @@ async function getDMSEvents(deviceKey = null, limit = 10, page = 1) {
 async function getDMSStatistics(hours = 24) {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
+    // Fetch recent docs without compound filter; filter in memory
     const snapshot = await db.collection(DMS_EVENTS_COLLECTION)
-        .where('createdAt', '>=', since)
+        .orderBy('createdAt', 'desc')
+        .limit(1000)
         .get();
 
     const stats = { total: 0, byType: {}, bySeverity: {} };
     snapshot.docs.forEach(doc => {
         const data = doc.data();
+        const t = typeof data.createdAt === 'string'
+            ? data.createdAt
+            : data.createdAt?.toDate?.()?.toISOString?.() || '';
+        if (t < since) return; // skip older than requested window
         stats.total++;
         stats.byType[data.type] = (stats.byType[data.type] || 0) + 1;
         stats.bySeverity[data.severity] = (stats.bySeverity[data.severity] || 0) + 1;
