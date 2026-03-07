@@ -4,16 +4,18 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  Image,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  TextInput,
 } from 'react-native';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { BACKEND_URL } from '../config';
+import apiClient from '../api/axiosConfig';
+import { useSession } from '../context/SessionContext';
+import { updateLastActivity } from '../utils/authUtils';
 
 const COLORS = {
   primary: '#007AFF',
@@ -26,11 +28,22 @@ const COLORS = {
 
 const ProfileScreen = () => {
   const [passenger, setPassenger] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    mobileNo: '',
+    nic: '',
+    dob: '',
+    bloodGroup: '',
+  });
   const [isLoading, setIsLoading] = useState(true);
   const navigation = useNavigation();
+  const { refreshSession, handleLogout: sessionLogout } = useSession();
 
   const fetchPassengerProfile = async () => {
     try {
+      // Update activity timestamp
+      await updateLastActivity();
+      await refreshSession();
       
       const token = await AsyncStorage.getItem('userToken');
       if (!token) {
@@ -38,17 +51,21 @@ const ProfileScreen = () => {
         return;
       }
 
-      const response = await axios.get(`${BACKEND_URL}/api/user/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await apiClient.get('/api/user/profile');
 
       setPassenger(response.data);
+      setFormData({
+        mobileNo: response.data?.mobileNo || '',
+        nic: response.data?.nic || '',
+        dob: response.data?.dob || '',
+        bloodGroup: response.data?.bloodGroup || '',
+      });
     } catch (error) {
       console.error('Failed to fetch profile:', error);
-      Alert.alert('Error', 'Could not fetch your profile. Please try again later.');
-      if (error.response && error.response.status === 401) {
-        await handleLogout();
+      if (error.message !== 'Token expired') {
+        Alert.alert('Error', 'Could not fetch your profile. Please try again later.');
       }
+      // 401 errors are handled by axios interceptor
     } finally {
       setIsLoading(false);
     }
@@ -64,8 +81,39 @@ const ProfileScreen = () => {
   }, [navigation]);
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('userToken');
-    navigation.replace('Login');
+    await sessionLogout('User logged out');
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      await updateLastActivity();
+      await refreshSession();
+
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        navigation.replace('Login');
+        return;
+      }
+
+      const response = await apiClient.put('/api/user/profile', {
+        mobileNo: formData.mobileNo,
+        nic: formData.nic,
+        dob: formData.dob,
+        bloodGroup: formData.bloodGroup,
+      });
+
+      const updatedUser = response.data?.user || {
+        ...passenger,
+        ...formData,
+      };
+
+      setPassenger(updatedUser);
+      setIsEditing(false);
+      Alert.alert('Success', 'Profile updated successfully.');
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      Alert.alert('Error', 'Could not update profile. Please try again.');
+    }
   };
 
   if (isLoading) {
@@ -81,7 +129,7 @@ const ProfileScreen = () => {
       <View style={styles.centered}>
         <Text>Could not load profile.</Text>
         <TouchableOpacity onPress={fetchPassengerProfile}>
-            <Text style={styles.retryText}>Tap to retry</Text>
+          <Text style={styles.retryText}>Tap to retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -90,24 +138,87 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.profileHeader}>
-        <Image
-          source={{ uri: passenger.profilePictureUrl || 'https://via.placeholder.com/100' }}
-          style={styles.avatar}
-        />
+        <View style={styles.avatar}>
+          <Ionicons name="person-circle" size={100} color={COLORS.primary} />
+        </View>
         <Text style={styles.name}>{passenger.name || 'N/A'}</Text>
         <Text style={styles.email}>{passenger.email || 'N/A'}</Text>
+        <Text style={styles.role}>{passenger.role ? passenger.role.charAt(0).toUpperCase() + passenger.role.slice(1) : 'Passenger'}</Text>
       </View>
 
-      <View style={styles.infoContainer}>
-        <InfoRow icon="person-outline" label="User ID" value={passenger.id || passenger._id || 'N/A'} />
-        <InfoRow icon="call-outline" label="Phone Number" value={passenger.phoneNumber || 'N/A'} />
+      <ScrollView style={styles.infoContainer}>
+        <InfoRow icon="person-outline" label="User ID" value={passenger.id || 'N/A'} />
+        {isEditing ? (
+          <View style={styles.editContainer}>
+            <Text style={styles.editLabel}>Mobile Number</Text>
+            <TextInput
+              style={styles.editInput}
+              placeholder="Enter mobile number"
+              value={formData.mobileNo}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, mobileNo: text }))}
+              keyboardType="phone-pad"
+            />
+
+            <Text style={styles.editLabel}>NIC</Text>
+            <TextInput
+              style={styles.editInput}
+              placeholder="Enter NIC"
+              value={formData.nic}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, nic: text }))}
+            />
+
+            <Text style={styles.editLabel}>Date of Birth</Text>
+            <TextInput
+              style={styles.editInput}
+              placeholder="YYYY-MM-DD"
+              value={formData.dob}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, dob: text }))}
+            />
+
+            <Text style={styles.editLabel}>Blood Group</Text>
+            <TextInput
+              style={styles.editInput}
+              placeholder="A+, B+, O-, etc."
+              value={formData.bloodGroup}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, bloodGroup: text }))}
+            />
+          </View>
+        ) : (
+          <>
+            <InfoRow icon="call-outline" label="Mobile Number" value={passenger.mobileNo || 'Not provided'} />
+            <InfoRow icon="id-card-outline" label="NIC" value={passenger.nic || 'Not provided'} />
+            <InfoRow icon="cake-outline" label="Date of Birth" value={passenger.dob || 'Not provided'} />
+            <InfoRow icon="water-outline" label="Blood Group" value={passenger.bloodGroup || 'Not provided'} />
+          </>
+        )}
         <InfoRow icon="calendar-outline" label="Member Since" value={passenger.createdAt ? new Date(passenger.createdAt).toLocaleDateString() : 'N/A'} />
-      </View>
+      </ScrollView>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={22} color={COLORS.danger} />
-        <Text style={styles.logoutButtonText}>Logout</Text>
-      </TouchableOpacity>
+      <View style={styles.buttonContainer}>
+        {isEditing ? (
+          <>
+            <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
+              <Ionicons name="checkmark-outline" size={20} color={COLORS.white} />
+              <Text style={styles.saveButtonText}>Save Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setIsEditing(false)}>
+              <Ionicons name="close-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity style={styles.editButton} onPress={() => setIsEditing(true)}>
+            <Ionicons name="create-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.editButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={22} color={COLORS.white} />
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -149,8 +260,9 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     marginBottom: 15,
-    borderWidth: 3,
-    borderColor: COLORS.primary,
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   name: {
     fontSize: 24,
@@ -162,9 +274,15 @@ const styles = StyleSheet.create({
     color: COLORS.darkGray,
     marginTop: 4,
   },
+  role: {
+    fontSize: 14,
+    color: COLORS.primary,
+    marginTop: 8,
+    fontWeight: '600',
+  },
   infoContainer: {
-    marginTop: 20,
     backgroundColor: COLORS.white,
+    flex: 1,
   },
   infoRow: {
     flexDirection: 'row',
@@ -173,6 +291,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    backgroundColor: COLORS.white,
   },
   infoIcon: {
     marginRight: 20,
@@ -186,19 +305,110 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: 2,
   },
-  logoutButton: {
+  editContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+  },
+  editLabel: {
+    fontSize: 12,
+    color: COLORS.darkGray,
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: COLORS.text,
+    backgroundColor: COLORS.white,
+  },
+  buttonContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    backgroundColor: COLORS.lightGray,
+  },
+  editButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.white,
-    margin: 20,
     padding: 15,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.danger,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    marginBottom: 12,
+  },
+  editButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    marginBottom: 12,
+  },
+  refreshButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  saveButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    marginBottom: 12,
+  },
+  cancelButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.danger,
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 0,
   },
   logoutButtonText: {
-    color: COLORS.danger,
+    color: COLORS.white,
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 10,

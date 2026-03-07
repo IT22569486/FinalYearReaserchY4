@@ -4,14 +4,18 @@ const {
   handleRegisterUser,
   handleLoginUser,
   handleGetUserProfile,
+  handleUpdateUserProfile,
+  handleVerifyToken,
 } = require("../controllers/userController");
 const { protect } = require("../middleware/authMiddleware");
 
-// Public routes
+// JWT Authentication - Public Routes
 router.post("/register", handleRegisterUser);
 router.post("/login", handleLoginUser);
 
-// Protected route
+// Protected Routes - Require valid JWT token
 router.get("/profile", protect, handleGetUserProfile);
+router.put("/profile", protect, handleUpdateUserProfile);
+router.get("/verify-token", protect, handleVerifyToken);
 
 module.exports = router;

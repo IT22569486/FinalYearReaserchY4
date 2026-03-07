@@ -200,6 +200,7 @@ const NotificationsScreen = ({ navigation }) => {
   };
 
   const NotificationItem = ({ notification }) => {
+    // Notification structure is now flattened (no nested data object)
     const typeInfo = getNotificationTypeDisplay(notification.type);
     const timeStr = formatNotificationDate(notification.createdAt);
 

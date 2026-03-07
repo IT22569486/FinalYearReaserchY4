@@ -6,9 +6,6 @@ const violationController = require("../controllers/violationController");
 // Get violation statistics (must be before :id route)
 router.get("/stats", violationController.getStats);
 
-// Get violation summary grouped by bus
-router.get("/summary-by-bus", violationController.getSummaryByBus);
-
 // Get all violations
 router.get("/", violationController.getViolations);
 
