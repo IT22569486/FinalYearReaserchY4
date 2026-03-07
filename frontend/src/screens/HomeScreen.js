@@ -412,6 +412,7 @@ const styles = StyleSheet.create({
   },
   socialIcon: {
     marginHorizontal: 10,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
