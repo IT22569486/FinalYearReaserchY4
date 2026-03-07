@@ -35,7 +35,7 @@ tqdm==4.66.1
 
 # Additional ML Tools
 imutils==0.5.4
-dlib==19.24.2
+# dlib==19.24.2
 
 # Optional (if needed)
 # jupyter==1.0.0

@@ -64,19 +64,43 @@ const LoginScreen = () => {
   }, [response, request]);
 
   const handleManualLogin = async () => {
-  try {
+    if (!email || !password) {
+      Alert.alert('Login Failed', 'Please enter your email and password.');
+      return;
+    }
+    setIsLoading(true);
+    console.log('[Login] Starting login...');
+    console.log('[Login] BACKEND_URL:', BACKEND_URL);
+    console.log('[Login] Email:', email);
+    try {
+      console.log('[Login] POSTing to:', `${BACKEND_URL}/api/user/login`);
       const res = await axios.post(`${BACKEND_URL}/api/user/login`, {
         email,
         password,
       });
 
+      console.log('[Login] Response status:', res.status);
+      console.log('[Login] Response data:', JSON.stringify(res.data));
+
       const { token } = res.data;
+
+      if (!token) {
+        console.error('[Login] ERROR: No token in response!', res.data);
+        Alert.alert('Login Failed', 'Server did not return a token.');
+        return;
+      }
+
+      console.log('[Login] Token received, saving to AsyncStorage...');
       await AsyncStorage.setItem('userToken', token);
-      Alert.alert('Login Success');
-      navigation.replace('MainTabs');
+      console.log('[Login] Token saved. Navigating to MainTabs...');
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+      console.log('[Login] navigation.reset called');
     } catch (error) {
-      console.error('Manual login failed:', error.response?.data || error.message);
-      Alert.alert('Login Failed', error.response?.data?.error_description || 'Invalid email or password.');
+      console.error('[Login] Request failed!');
+      console.error('[Login] Error message:', error.message);
+      console.error('[Login] Response status:', error.response?.status);
+      console.error('[Login] Response data:', JSON.stringify(error.response?.data));
+      Alert.alert('Login Failed', error.response?.data?.message || error.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
     }
