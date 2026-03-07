@@ -38,6 +38,13 @@ except ImportError:
     _cfg = None
     CONFIG_AVAILABLE = False
 
+# Import stream server (mobile video frame receiver)
+try:
+    from stream_server import start_server as _start_stream_server
+    STREAM_SERVER_AVAILABLE = True
+except ImportError:
+    STREAM_SERVER_AVAILABLE = False
+
 # Import health monitor
 try:
     from device_health_monitor import DeviceHealthMonitor, get_health_monitor
@@ -284,6 +291,15 @@ def run_all_components(use_mqtt=True):
     # Connect to backend if enabled
     if use_mqtt:
         init_backend_connection()
+
+    # Start mobile video stream server if configured
+    _stream_cfg = _cfg.get("streaming_server", {}) if _cfg else {}
+    if STREAM_SERVER_AVAILABLE and _stream_cfg.get("enabled", False):
+        _start_stream_server(
+            host=_stream_cfg.get("host", "0.0.0.0"),
+            port=_stream_cfg.get("port", 5005),
+        )
+        time.sleep(0.5)  # let server bind before components start trying to connect
     
     enabled_components = [c for c in COMPONENTS if c['enabled']]
     

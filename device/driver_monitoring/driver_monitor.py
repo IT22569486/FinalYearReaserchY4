@@ -97,7 +97,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Configuration from device_config.json
 # ---------------------------------------------------------------------------
-SHOW_GUI = _comp.get("show_gui", True)
+SHOW_GUI = _comp.get("show_gui", False)
 ENABLE_PHONE = _comp.get("enable_phone_detection", True)
 ENABLE_SEATBELT = _comp.get("enable_seatbelt_detection", True)
 ENABLE_LSTM = _comp.get("enable_lstm_model", False)
@@ -107,6 +107,19 @@ CAMERA_INDEX = _cfg.camera_index
 FRAME_WIDTH = _cfg.camera_width
 FRAME_HEIGHT = _cfg.camera_height
 SEND_INTERVAL = _cfg.send_interval
+
+# Mobile streaming
+USE_MOBILE_STREAM = _comp.get("use_mobile_stream", False)
+_stream_cfg = _cfg.get("streaming_server", {})
+STREAM_SERVER_PORT = _stream_cfg.get("port", 5005)
+STREAM_FRAME_TIMEOUT = _stream_cfg.get("frame_timeout_s", 10)
+
+# Sound alerts
+try:
+    from shared.sound_alerts import SoundAlerts
+    _sound_alerts = SoundAlerts(_cfg.get("violation_sounds", {}))
+except Exception:
+    _sound_alerts = None
 
 # Thresholds (mirrored from original drowsy.py)
 EAR_SLEEP_THRESHOLD = 0.18
@@ -674,19 +687,28 @@ class DriverMonitor:
     # ---- main loop -----------------------------------------------------
 
     def run(self):
-        """Open camera and run detection loop."""
+        """Open camera (or mobile stream) and run detection loop."""
         if not MEDIAPIPE_AVAILABLE or not SCIPY_AVAILABLE:
             print("[DMS] ERROR: mediapipe and scipy are required.")
             return
 
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        if not cap.isOpened():
-            print("[DMS] ERROR: Could not open camera.")
-            self._publish_component_status("error", "Camera not available")
-            return
-
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+        if USE_MOBILE_STREAM:
+            sys.path.insert(0, str(DEVICE_DIR))
+            from stream_server import MobileCapture
+            cap = MobileCapture('driver', server_port=STREAM_SERVER_PORT,
+                                wait_timeout_s=STREAM_FRAME_TIMEOUT)
+            if not cap.isOpened():
+                print("[DMS] ERROR: No driver frame from mobile stream")
+                self._publish_component_status("error", "Mobile stream unavailable")
+                return
+        else:
+            cap = cv2.VideoCapture(CAMERA_INDEX)
+            if not cap.isOpened():
+                print("[DMS] ERROR: Could not open camera.")
+                self._publish_component_status("error", "Camera not available")
+                return
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
         self.running = True
         self._publish_component_status("running", "DMS active")
@@ -703,6 +725,23 @@ class DriverMonitor:
                 frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
 
                 state, severity, details = self._process_frame(frame)
+
+                # Print state to terminal
+                print(f"[DMS] {state}  ({severity})  "
+                      + '  '.join(f"{k}={v}" for k, v in list(details.items())[:4]))
+
+                # Sound alerts
+                if _sound_alerts:
+                    state_to_sound = {
+                        'PHONE_USE':    'phone_detected',
+                        'PHONE_WARNING':'phone_detected',
+                        'SLEEPING':     'sleeping',
+                        'DROWSY':       'drowsy',
+                        'YAWNING':      'yawning',
+                        'HEAD_TURNED':  'head_turn',
+                        'NO_SEATBELT':  'seatbelt_missing',
+                    }
+                    _sound_alerts.play(state_to_sound.get(state, ''))
 
                 # Camera preview window
                 if SHOW_GUI:

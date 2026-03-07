@@ -31,6 +31,25 @@
 
   "openweather_api_key": "",
 
+  "streaming_server": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5005,
+    "frame_timeout_s": 10
+  },
+
+  "violation_sounds": {
+    "enabled": true,
+    "phone_detected":  { "duration_ms": 200, "repeat": 3, "frequency": 1200 },
+    "seatbelt_missing":{ "duration_ms": 1500,"repeat": 1, "frequency": 900  },
+    "drowsy":          { "duration_ms": 600, "repeat": 2, "frequency": 800  },
+    "sleeping":        { "duration_ms": 300, "repeat": 5, "frequency": 1000 },
+    "yawning":         { "duration_ms": 500, "repeat": 1, "frequency": 600  },
+    "lane_violation":  { "duration_ms": 300, "repeat": 1, "frequency": 700  },
+    "close_proximity": { "duration_ms": 400, "repeat": 2, "frequency": 1100 },
+    "head_turn":       { "duration_ms": 400, "repeat": 1, "frequency": 750  }
+  },
+
   "components": {
     "context_aware_monitoring": {
       "enabled": true,
@@ -38,8 +57,9 @@
       "enable_lane_detection": true,
       "enable_behavior_analysis": true,
       "enable_adaptive_processing": true,
-      "show_gui": true,
-      "video_source": "C:\\uni\\DashCamUpdate.mp4",
+      "show_gui": false,
+      "use_mobile_stream": true,
+      "video_source": "0",
       "yolo_imgsz": 384,
       "depth_input_size": [256, 256]
     },
@@ -49,7 +69,8 @@
     "driver_monitoring": {
       "enabled": true,
       "use_onnx": true,
-      "show_gui": true,
+      "show_gui": false,
+      "use_mobile_stream": true,
       "enable_phone_detection": true,
       "enable_seatbelt_detection": true,
       "enable_lstm_model": false,
