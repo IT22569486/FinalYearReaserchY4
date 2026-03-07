@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
-import { activateKeepAwake, deactivateKeepAwake } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { 
   isTokenExpired, 
   getTimeUntilExpiration, 
@@ -26,7 +26,7 @@ export const SessionProvider = ({ children }) => {
     checkTokenExpiration();
     setupInactivityMonitoring();    
     // Keep screen awake initially
-    activateKeepAwake('app-active');
+    activateKeepAwakeAsync('app-active');
     
     // Monitor app state changes
     const subscription = AppState.addEventListener('change', handleAppStateChange);

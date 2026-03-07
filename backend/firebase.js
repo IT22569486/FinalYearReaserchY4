@@ -1,7 +1,7 @@
 // firebase.js
 const admin = require("firebase-admin");
 const path = require("path");
-require("dotenv").config();
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 function initFirebase() {
   if (admin.apps.length) return admin;

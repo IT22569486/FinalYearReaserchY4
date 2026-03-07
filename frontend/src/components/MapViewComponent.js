@@ -21,12 +21,17 @@ const MapViewComponent = ({
   const mapRef = useRef(null);
 
   // Use passenger's location for the region if no initial region is provided
-  const region = initialRegion || {
+  const region = initialRegion || (passengerLocation ? {
     latitude: passengerLocation.latitude,
     longitude: passengerLocation.longitude,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
-  };
+  } : {
+    latitude: 6.9271,
+    longitude: 79.8612,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
 
   useEffect(() => {
     if (mapRef.current && routePath && routePath.length > 0) {
@@ -116,6 +121,11 @@ const MapViewComponent = ({
 
       {/* Render a marker for each bus */}
       {buses.map((bus) => {
+        // Support both {lat,lng} and {latitude,longitude} location formats
+        const loc = bus.location || {};
+        const lat = loc.latitude ?? loc.lat ?? bus.latitude ?? null;
+        const lng = loc.longitude ?? loc.lng ?? bus.longitude ?? null;
+        if (lat == null || lng == null) return null; // skip buses with no location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';
         const arrivalTime = passengerArrivalTimes[bus.busId];
@@ -124,10 +134,7 @@ const MapViewComponent = ({
         return (
           <Marker
             key={bus.busId}
-            coordinate={{
-              latitude: bus.location.lat,
-              longitude: bus.location.lng,
-            }}
+            coordinate={{ latitude: lat, longitude: lng }}
             title={`Bus ${bus.busId}`}
             zIndex={150}
           >

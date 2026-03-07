@@ -7,6 +7,7 @@ import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapViewComponent from '../components/MapViewComponent';
+import BusSafetyCard from '../components/BusSafetyCard';
 import { BACKEND_URL, ML_BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
@@ -126,6 +127,9 @@ const CurrentTripScreen = ({ route }) => {
       try {
         await updateLastActivity();
         await refreshSession();
+
+        // Save this bus as the last tracked bus (for HomeScreen safety card)
+        await AsyncStorage.setItem('lastTrackedBusId', busId);
 
         // Fetch the specific bus
         const busRes = await apiClient.get(`/api/bus/${busId}`);
@@ -499,6 +503,8 @@ const CurrentTripScreen = ({ route }) => {
         // Find the closest stop via GPS as a fallback and for distance checks
         let closestStopIndex = -1;
         let minDistance = Infinity;
+        const busLat = bus.location?.latitude ?? bus.location?.lat ?? bus.latitude ?? 0;
+        const busLng = bus.location?.longitude ?? bus.location?.lng ?? bus.longitude ?? 0;
         stops.forEach((stop, index) => {
             const distance = getDistanceKm(
               bus.location.latitude,
@@ -759,9 +765,12 @@ const CurrentTripScreen = ({ route }) => {
         buses={[bus]} 
         passengerLocation={passengerLocation}
         routePath={selectedRoutePath}
-        initialRegion = {{
-          latitude: bus.location.latitude,
-          longitude: bus.location.longitude}}
+        initialRegion={(bus.location || bus.latitude) ? {
+          latitude: bus.location?.latitude ?? bus.location?.lat ?? bus.latitude,
+          longitude: bus.location?.longitude ?? bus.location?.lng ?? bus.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        } : undefined}
         stops={routeStops}
         routes={allRoutes}
         passengerOriginStop={passengerOriginStop}
@@ -843,11 +852,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: 'gray',
   },
-  tripInfo: {
+  tripInfoContainer: {
     position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '60%',
+  },
+  tripInfoContent: {
+    paddingBottom: 20,
+  },
+  tripInfo: {
+    marginHorizontal: 20,
+    marginBottom: 10,
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,

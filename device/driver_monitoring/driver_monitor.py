@@ -80,14 +80,13 @@ try:
 except ImportError:
     ONNX_YOLO_AVAILABLE = False
 
-# Fallback: try ultralytics if ONNX models not available
+# Fallback: always try to import ultralytics regardless of onnxruntime availability
 ULTRALYTICS_AVAILABLE = False
-if not ONNX_YOLO_AVAILABLE:
-    try:
-        from ultralytics import YOLO
-        ULTRALYTICS_AVAILABLE = True
-    except ImportError:
-        pass
+try:
+    from ultralytics import YOLO
+    ULTRALYTICS_AVAILABLE = True
+except ImportError:
+    pass
 
 try:
     import paho.mqtt.client as mqtt
@@ -126,7 +125,7 @@ SEATBELT_FRAMES_THRESHOLD = 10
 YOLO_CONFIDENCE_THRESHOLD = 0.35
 PHONE_CLASS_ID = 67
 YOLO_DETECTION_INTERVAL = 8
-PHONE_DETECTION_DECAY = 15
+PHONE_DETECTION_DECAY = 40  # must survive ~3 detection cycles (each cycle decays by ~15)
 
 SEATBELT_DETECTION_INTERVAL = 8
 SEATBELT_CONFIDENCE_THRESHOLD = 0.30
@@ -425,9 +424,9 @@ class DriverMonitor:
     def _detect_seatbelt(self, frame):
         if self.seatbelt_model is None:
             return
+        # Non-inference frames: only age the grace timer, never touch counters
         if self.frame_count % SEATBELT_DETECTION_INTERVAL != 0:
             if self.seatbelt_timer > 0:
-                self.seatbelt_present_counter = 0
                 self.seatbelt_timer -= 1
                 if self.seatbelt_timer <= 0:
                     self.seatbelt_detected = False
@@ -442,7 +441,8 @@ class DriverMonitor:
                 names = self.seatbelt_model.names
                 for cls_id, conf in zip(class_ids, scores):
                     label = names.get(int(cls_id), str(cls_id)).lower()
-                    if "no" in label:
+                    # "no_seatbelt" / "no-seatbelt" but NOT "seatbelt" alone
+                    if ("no" in label and ("seatbelt" in label or "belt" in label)) or label in ("no", "noseatbelt"):
                         no_sb.append(float(conf))
                     elif "seatbelt" in label or "belt" in label:
                         sb.append(float(conf))
@@ -457,15 +457,18 @@ class DriverMonitor:
                         label = (names.get(cls, str(cls)) if isinstance(names, dict) else str(cls)).lower()
                         if conf < SEATBELT_CONFIDENCE_THRESHOLD:
                             continue
-                        if "no" in label:
+                        if ("no" in label and ("seatbelt" in label or "belt" in label)) or label in ("no", "noseatbelt"):
                             no_sb.append(conf)
                         elif "seatbelt" in label or "belt" in label:
                             sb.append(conf)
 
             if no_sb:
+                # Require SEATBELT_CONFIRM_FRAMES consecutive missing detections
+                # before flipping state — mirrors the seatbelt-present confirm logic
                 self.seatbelt_present_counter = 0
-                self.seatbelt_detected = False
                 self.seatbelt_missing_counter += 1
+                if self.seatbelt_missing_counter >= SEATBELT_CONFIRM_FRAMES:
+                    self.seatbelt_detected = False
             elif sb:
                 self.seatbelt_missing_counter = 0
                 self.seatbelt_present_counter += 1
@@ -473,13 +476,14 @@ class DriverMonitor:
                     self.seatbelt_detected = True
                     self.seatbelt_timer = SEATBELT_MISSING_TIMER
             else:
-                self.seatbelt_present_counter = 0
+                # No confident prediction either way — keep previous state;
+                # let the grace timer age naturally
                 if self.seatbelt_timer > 0:
                     self.seatbelt_timer -= SEATBELT_DETECTION_INTERVAL
                     if self.seatbelt_timer <= 0:
                         self.seatbelt_detected = False
-                else:
-                    self.seatbelt_detected = False
+                # Do NOT flip to False when timer is 0 and no detection —
+                # keep last known state to avoid false startup alarms
         except Exception as e:
             print(f"[DMS] Seatbelt detection error: {e}")
 
@@ -613,7 +617,20 @@ class DriverMonitor:
                 severity = "warning" if state != "ALERT" else "info"
 
         else:
-            self._reset_counters()
+            # Even without a face, still count phone usage so the event fires
+            if self.phone_detected:
+                self.phone_use_counter += 1
+                for attr in ("sleep_counter", "drowsy_counter", "yawn_counter",
+                              "head_turn_counter", "hands_off_counter"):
+                    setattr(self, attr, 0)
+                if self.phone_use_counter >= PHONE_USE_FRAMES_THRESHOLD:
+                    state = "PHONE_USE"
+                    severity = "critical"
+                else:
+                    state = "PHONE_WARNING"
+                    severity = "warning"
+            else:
+                self._reset_counters()
 
         self.current_state = state
 

@@ -6,7 +6,8 @@ const jwt = require("jsonwebtoken");
 
 // Helper function to generate a JWT
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  const secret = process.env.JWT_SECRET || 'fallback_dev_secret_change_in_production';
+  return jwt.sign({ id }, secret, {
     expiresIn: "30d",
   });
 };
