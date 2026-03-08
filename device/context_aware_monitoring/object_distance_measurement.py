@@ -38,24 +38,11 @@ _comp = _cfg.get_component_config("context_aware_monitoring")
 USE_ONNX = _comp.get("use_onnx", True)
 ENABLE_LANE = _comp.get("enable_lane_detection", True)
 ENABLE_BEHAVIOR = _comp.get("enable_behavior_analysis", True)
-SHOW_GUI = _comp.get("show_gui", False)
+SHOW_GUI = _comp.get("show_gui", True)
 VIDEO_SOURCE = _comp.get("video_source", "0")   # "0" = webcam, or path
 YOLO_IMGSZ = _comp.get("yolo_imgsz", 384)
 DEPTH_INPUT_SIZE = tuple(_comp.get("depth_input_size", [256, 256]))
 VEHICLE_SPEED_KMH = _cfg.get("vehicle_speed_kmh", 40)
-
-# Mobile streaming
-USE_MOBILE_STREAM = _comp.get("use_mobile_stream", False)
-_stream_cfg = _cfg.get("streaming_server", {})
-STREAM_SERVER_PORT = _stream_cfg.get("port", 5005)
-STREAM_FRAME_TIMEOUT = _stream_cfg.get("frame_timeout_s", 10)
-
-# Sound alerts
-try:
-    from shared.sound_alerts import SoundAlerts
-    _sound_alerts = SoundAlerts(_cfg.get("violation_sounds", {}))
-except Exception:
-    _sound_alerts = None
 
 # ---------------------------------------------------------------------------
 # ONNX YOLO wrapper (preferred) or ultralytics fallback
@@ -362,6 +349,17 @@ def main():
         print("  Lane Memory Tracker initialized")
     
     # ---- Audio warnings ----
+    warning_sound = None
+    if lane_model is not None:
+        try:
+            import pygame
+            pygame.mixer.init()
+            audio_path = str(ASSETS_DIR / 'microwave-oven-beeps-36087.mp3')
+            if Path(audio_path).exists():
+                warning_sound = pygame.mixer.Sound(audio_path)
+        except:
+            pass
+    
     last_warning_time = 0
     warning_cooldown = 2.0
     proximity_threshold = 100
@@ -379,32 +377,24 @@ def main():
         print(f"  Behavior analyzer ready  speed={vehicle_speed} km/h")
     
     # ---- Video Input ----
-    if USE_MOBILE_STREAM:
-        sys.path.insert(0, str(DEVICE_DIR))
-        from stream_server import MobileCapture
-        cap = MobileCapture('road', server_port=STREAM_SERVER_PORT,
-                            wait_timeout_s=STREAM_FRAME_TIMEOUT)
-        if not cap.isOpened():
-            print("[CAM] ERROR: No road frame from mobile stream. Exiting.")
-            return
-        print("[CAM] Using mobile stream for road video")
+    video_path = VIDEO_SOURCE
+    if video_path == '0':
+        cap = cv2.VideoCapture(_cfg.camera_index)
     else:
-        video_path = VIDEO_SOURCE
-        if video_path == '0':
-            cap = cv2.VideoCapture(_cfg.camera_index)
-        else:
-            if not Path(video_path).exists():
-                print(f"ERROR: Video not found: {video_path}")
-                return
-            cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            print(f"Failed to open video: {video_path}")
+        if not Path(video_path).exists():
+            print(f"ERROR: Video not found: {video_path}")
             return
-        print(f"\nVideo: {video_path}")
-
-    fps   = cap.get(cv2.CAP_PROP_FPS) or 15.0
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)  or 640)
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+        cap = cv2.VideoCapture(video_path)
+    
+    if not cap.isOpened():
+        print(f"Failed to open video: {video_path}")
+        return
+    
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    print(f"\nVideo: {video_path}")
     print(f"Resolution: {width}x{height} @ {fps:.1f} FPS")
     
     # Initialize Adaptive Processor for performance optimizations
@@ -427,15 +417,10 @@ def main():
         )
     
     # Video writer - triple panel (original | depth | combined)
-    # Video writer (only in file/camera mode, not mobile stream)
-    out = None
-    if not USE_MOBILE_STREAM:
-        output_width = width * 2
-        output_path = 'object_distance_output.mp4'
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (output_width, height))
-    else:
-        output_path = None
+    output_width = width * 2
+    output_path = 'object_distance_output.mp4'
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (output_width, height))
     
     # Fixed display size for consistent preview
     DISPLAY_WIDTH = 1280
@@ -502,11 +487,10 @@ def main():
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1)
                         
                         display_frame = cv2.resize(skip_display, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                        if SHOW_GUI:
-                            cv2.imshow('Object Distance Measurement', display_frame)
-                            if cv2.waitKey(1) & 0xFF == ord('q'):
-                                print("\nInterrupted by user")
-                                break
+                        cv2.imshow('Object Distance Measurement', display_frame)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            print("\nInterrupted by user")
+                            break
                         continue  # Skip all processing for this frame
                 
                 # If frame was skipped, use cached results
@@ -772,11 +756,9 @@ def main():
                             if should_warn:
                                 lane_warning = True
                                 current_time = time.time()
-                                if (current_time - last_warning_time) > warning_cooldown:
+                                if warning_sound and (current_time - last_warning_time) > warning_cooldown:
+                                    warning_sound.play()
                                     last_warning_time = current_time
-                                    print(f"[CAM] LANE VIOLATION: {warning_type}")
-                                    if _sound_alerts:
-                                        _sound_alerts.play('lane_violation')
                                 
                                 # Report lane violation to CTB system
                                 if health_monitor:
@@ -928,9 +910,6 @@ def main():
                     # Green = Far (dark in depth map) - Safe
                     if proximity in ["Very Close", "Close"]:
                         box_color = (0, 0, 139)  # Dark Red - very close (danger!)
-                        print(f"[CAM] CLOSE PROXIMITY: {obj_name} ({proximity})")
-                        if _sound_alerts:
-                            _sound_alerts.play('close_proximity')
                     elif proximity == "Near":
                         box_color = (0, 0, 255)  # Red - near
                     elif proximity == "Medium":
@@ -1034,33 +1013,22 @@ def main():
             
             # Cache combined frame for fast skip mode
             cached_combined_frame = combined_frame
-
-            # Write output video (only in file mode)
-            if not USE_MOBILE_STREAM:
-                out.write(combined_frame)
-
-            # Terminal status print
-            if frame_count % 30 == 0:
-                via_txt = "[STREAM]" if USE_MOBILE_STREAM else "[FILE]"
-                print(f"[CAM] {via_txt} F:{frame_count} | YOLO:{yolo_runs_count} MiDaS:{midas_runs_count} SKIP:{skip_rate:.0f}%")
-
-            # Display preview (only when SHOW_GUI is true)
-            if SHOW_GUI:
-                display_frame = cv2.resize(combined_frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                cv2.imshow('Object Distance Measurement', display_frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    print("\nInterrupted by user")
-                    break
-            else:
-                # Allow cooperative termination without GUI
-                pass
+            
+            # Write and display
+            out.write(combined_frame)
+            
+            # Resize to fixed display size for consistent preview
+            display_frame = cv2.resize(combined_frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+            cv2.imshow('Object Distance Measurement', display_frame)
+            
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                print("\nInterrupted by user")
+                break
     
     finally:
         cap.release()
-        if not USE_MOBILE_STREAM:
-            out.release()
-        if SHOW_GUI:
-            cv2.destroyAllWindows()
+        out.release()
+        cv2.destroyAllWindows()
         
         # Stop health monitor
         if health_monitor:
@@ -1070,8 +1038,7 @@ def main():
     elapsed = time.time() - start_time
     print(f"\n{'='*60}")
     print(f"Processed {frame_count} frames in {elapsed:.1f}s ({frame_count/elapsed:.1f} FPS)")
-    if not USE_MOBILE_STREAM:
-        print(f"Output saved: {output_path}")
+    print(f"Output saved: {output_path}")
     
     # Print adaptive processor statistics
     if adaptive_processor is not None:
