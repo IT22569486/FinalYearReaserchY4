@@ -50,10 +50,10 @@ function Sidebar() {
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 80, height: 80, borderRadius: '8px' }}>
-          <img src="/logo.png" alt="SafeTravo Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="SafeTransit360 Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
         <div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>SafeTravo</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>SafeTransit360</div>
         </div>
       </div>
 

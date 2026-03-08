@@ -76,7 +76,7 @@ function Login() {
 
             {/* Top Logo placed over image */}
             <div style={{ position: 'relative', zIndex: 1, filter: 'brightness(0) invert(1)' }}>
-              <img src="/logo.png" alt="SafeTravo Logo" style={{ width: 72, height: 72, objectFit: 'contain' }} />
+              <img src="/logo.png" alt="SafeTransit360 Logo" style={{ width: 72, height: 72, objectFit: 'contain' }} />
             </div>
 
             {/* Bottom Text placed over image */}
@@ -90,7 +90,7 @@ function Login() {
         {/* Right Side - Form */}
         <div style={{ flex: 1, padding: '4rem 5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ marginBottom: '2.5rem' }}>
-            <img src="/logo.png" alt="SafeTravo Logo" style={{ width: 64, height: 64, objectFit: 'contain', marginBottom: '1.5rem' }} />
+            <img src="/logo.png" alt="SafeTransit360 Logo" style={{ width: 64, height: 64, objectFit: 'contain', marginBottom: '1.5rem' }} />
             <h2 style={{ fontSize: '2rem', fontWeight: 700, color: '#111827', margin: '0 0 0.75rem 0' }}>
               {isRegister ? 'Create an account' : 'Welcome back'}
             </h2>
@@ -126,7 +126,7 @@ function Login() {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#111827', marginBottom: '0.5rem' }}>Your email</label>
               <input
                 type="email"
-                placeholder="admin@safetravo.com"
+                placeholder="admin@SafeTransit360.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

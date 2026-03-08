@@ -11,6 +11,7 @@ const deviceService = require('../services/deviceService');
 const violationService = require('../services/violationService');
 const busService = require('../services/busService');
 const routeService = require('../services/routeService');
+const dmsService = require('../services/dmsService');
 const { db } = require('../firebase');
 
 // Aedes will be dynamically imported when needed
@@ -91,7 +92,11 @@ async function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
         // IMPORTANT: /status must be checked BEFORE /safespeed because
         // status topic is .../safespeed/status which matches both patterns
         try {
-            if (topic.includes('/health')) {
+            if (topic.includes('/dms/telemetry')) {
+                await handleDMSTelemetry(topic, payload);
+            } else if (topic.includes('/dms/event')) {
+                await handleDMSEvent(topic, payload);
+            } else if (topic.includes('/health')) {
                 await handleHealthUpdate(topic, payload);
             } else if (topic.includes('/violation')) {
                 await handleViolation(topic, payload);
@@ -561,6 +566,80 @@ async function handleBusTelemetry(topic, payload) {
         console.log(`Telemetry processed for bus ${busId}`);
     } catch (err) {
         console.error(`Error processing telemetry: ${err.message}`);
+    }
+}
+
+/**
+ * Handle DMS telemetry updates
+ * Topic: ctb/bus/{device_key}/dms/telemetry
+ */
+async function handleDMSTelemetry(topic, payload) {
+    const { device_key, state, timestamp, details } = payload;
+
+    if (!device_key) {
+        console.error('DMS telemetry missing device_key');
+        return;
+    }
+
+    console.log(`DMS telemetry from ${device_key}: ${state}`);
+
+    try {
+        await dmsService.upsertDMSState({
+            device_key,
+            state,
+            timestamp,
+            details
+        });
+
+        if (io) {
+            io.emit('dmsStateUpdate', {
+                device_key,
+                state,
+                timestamp: timestamp || new Date().toISOString(),
+                details
+            });
+        }
+
+        console.log(`DMS telemetry processed for ${device_key}`);
+    } catch (err) {
+        console.error(`Error processing DMS telemetry: ${err.message}`);
+    }
+}
+
+/**
+ * Handle DMS events (alerts)
+ * Topic: ctb/bus/{device_key}/dms/event
+ */
+async function handleDMSEvent(topic, payload) {
+    const { device_key, type, severity, timestamp, details } = payload;
+
+    if (!device_key || !type) {
+        console.error('DMS event missing device_key or type');
+        return;
+    }
+
+    console.log(`DMS event from ${device_key}: ${type} (${severity})`);
+
+    try {
+        const event = await dmsService.addDMSEvent({
+            device_key,
+            type,
+            severity,
+            timestamp,
+            details
+        });
+
+        if (io) {
+            io.emit('dmsEvent', {
+                ...event,
+                device_key,
+                timestamp: timestamp || new Date().toISOString()
+            });
+        }
+
+        console.log(`DMS event recorded: ${event.id}`);
+    } catch (err) {
+        console.error(`Error processing DMS event: ${err.message}`);
     }
 }
 

@@ -14,6 +14,7 @@ import RatingScreen from '../screens/RatingScreen';
 import BusRatingsScreen from '../screens/BusRatingsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import LiveBusTrackingScreen from '../screens/LiveBusTrackingScreen';
+import BusSafetyScreen from '../screens/BusSafetyScreen';
 import { isTokenValid, isInactive, clearAuthData } from '../utils/authUtils';
 import { SessionProvider } from '../context/SessionContext';
 import { NotificationProvider } from '../context/NotificationContext';
@@ -154,6 +155,7 @@ const AppNavigator = () => {
             <Stack.Screen name="BusRatings" component={BusRatingsScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="LiveBusTracking" component={LiveBusTrackingScreen} />  
+            <Stack.Screen name="BusSafety" component={BusSafetyScreen} />
           </Stack.Navigator>
         </SessionProvider>
         <RealtimeNotificationDisplay />
