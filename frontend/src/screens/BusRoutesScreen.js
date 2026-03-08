@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, SafeAreaView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import RNPickerSelect from 'react-native-picker-select';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,11 +11,14 @@ import MapViewComponent from '../components/MapViewComponent';
 import { BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
+import { calculateBusPredictions, getLastThreeRecordsOfTrip, getDistanceKm } from '../services/predictionService';
 
 const socket = io(BACKEND_URL);
 
 const BusRoutesScreen = () => {
   const [allBuses, setAllBuses] = useState([]);
+  const [busTrips, setBusTrips] = useState([]);
+  const [busTripRecords, setBusTripRecords] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedOrigin, setSelectedOrigin] = useState(null);
@@ -22,6 +26,8 @@ const BusRoutesScreen = () => {
   const [selectedRouteDetails, setSelectedRouteDetails] = useState(null);
   const [passengerLocation, setPassengerLocation] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [busArrivalTimes, setBusArrivalTimes] = useState({});
+  const [busPassengerCounts, setBusPassengerCounts] = useState({});
   const navigation = useNavigation();
   const { refreshSession } = useSession();
 
@@ -49,13 +55,17 @@ const BusRoutesScreen = () => {
 
       const fetchData = async () => {
         try {
-          const [routesRes, busesRes] =
+          const [routesRes, busesRes, busTripsRes, busTripRecordsRes] =
            await Promise.all([
             apiClient.get('/api/routes'),
             apiClient.get('/api/bus'),
+            apiClient.get('/api/bus-trips'),
+            apiClient.get('/api/bus-trip-records'),
           ]);
           setRoutes(routesRes.data);
           setAllBuses(busesRes.data);
+          setBusTrips(busTripsRes.data);
+          setBusTripRecords(busTripRecordsRes.data);
         } catch (err) {
           setErrorMsg('Failed to fetch data');
           console.error(err);
@@ -67,11 +77,14 @@ const BusRoutesScreen = () => {
       socket.on('busLocationUpdate', (updatedBus) => {
         setAllBuses((prevBuses) => {
           const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
+
           if (index !== -1) {
+            // Merge the update with existing bus data to preserve all fields
             const newBuses = [...prevBuses];
-            newBuses[index] = updatedBus;
+            newBuses[index] = { ...prevBuses[index], ...updatedBus };
             return newBuses;
           }
+          // If bus not found in list, add it
           return [...prevBuses, updatedBus];
         });
       });
@@ -81,49 +94,6 @@ const BusRoutesScreen = () => {
       console.error('Error initializing BusRoutesScreen:', error);
     }
   };
-
-  useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied');
-        return;
-      }
-      let location = await Location.getCurrentPositionAsync({});
-      setPassengerLocation(location.coords);
-    })();
-
-    const fetchData = async () => {
-      try {
-        const [routesRes, busesRes] =
-         await Promise.all([
-          apiClient.get('/api/routes'),
-          apiClient.get('/api/bus'),
-        ]);
-        setRoutes(routesRes.data);
-        setAllBuses(busesRes.data);
-      } catch (err) {
-        setErrorMsg('Failed to fetch data');
-        console.error(err);
-      }
-    };
-
-    fetchData();
-
-    socket.on('busLocationUpdate', (updatedBus) => {
-      setAllBuses((prevBuses) => {
-        const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
-        if (index !== -1) {
-          const newBuses = [...prevBuses];
-          newBuses[index] = updatedBus;
-          return newBuses;
-        }
-        return [...prevBuses, updatedBus];
-      });
-    });
-
-    return () => socket.off('busLocationUpdate');
-  }, []);
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -144,20 +114,6 @@ const BusRoutesScreen = () => {
     fetchRouteDetails();
   }, [selectedRoute]);
 
-  const filteredBuses = useMemo(() => {
-    if (!selectedRoute) return allBuses;
-    return allBuses.filter((bus) => bus.routeId === selectedRoute);
-  }, [selectedRoute, allBuses]);
-
-  const selectedRouteObject = useMemo(() => {
-    if (!selectedRoute) return null;
-    return routes.find((r) => r.id === selectedRoute);
-  }, [selectedRoute, routes]);
-
-  const selectedRoutePath = useMemo(() => {
-    return selectedRouteDetails ? selectedRouteDetails.coordinates : [];
-  }, [selectedRouteDetails]);
-
   const selectedRouteStops = useMemo(() => {
     if (!selectedRouteDetails) return [];
     return selectedRouteDetails.stops.map(stopName => {
@@ -169,6 +125,159 @@ const BusRoutesScreen = () => {
       };
     });
   }, [selectedRouteDetails, routes]);
+
+  // Calculate arrival times and passenger counts for each bus
+  useEffect(() => {
+    const runPredictions = async () => {
+      if (!selectedOrigin || !selectedDestination || filteredBuses.length === 0 || !selectedRouteStops.length) {
+        console.log('Skipping predictions - missing requirements:', {
+          hasOrigin: !!selectedOrigin,
+          hasDestination: !!selectedDestination,
+          filteredBusCount: filteredBuses.length,
+          stopsCount: selectedRouteStops.length
+        });
+        setBusArrivalTimes({});
+        setBusPassengerCounts({});
+        return;
+      }
+
+      console.log('Starting predictions for', filteredBuses.length, 'buses');
+      
+      // Use prediction service
+      const { arrivalTimes, passengerCounts } = await calculateBusPredictions(
+        filteredBuses,
+        selectedRouteStops,
+        selectedOrigin,
+        routes,
+        busTrips
+      );
+      
+      setBusArrivalTimes(arrivalTimes);
+      setBusPassengerCounts(passengerCounts);
+      
+      console.log('\nFinal predictions:', {
+        arrivalTimes: Object.keys(arrivalTimes).length,
+        passengerCounts: Object.keys(passengerCounts).length,
+        data: { arrivalTimes, passengerCounts }
+      });
+    };
+
+    // Calculate predictions immediately (no debounce)
+    // Fire and forget - don't block bus display
+    runPredictions().catch(err => {
+      console.error('Prediction calculation error:', err);
+    });
+
+  }, [selectedOrigin, selectedDestination, filteredBuses, selectedRouteStops, routes]);
+
+
+
+  const getRecordTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value.toDate === 'function') return value.toDate().getTime();
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+      const parsed = Date.parse(normalized);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const filteredBuses = useMemo(() => {
+    let buses = allBuses;
+    
+    // Filter by route
+    if (selectedRoute) {
+      buses = buses.filter((bus) => bus.routeId === selectedRoute);
+    }
+    
+    // Filter by direction - show buses going in the right direction
+    if (selectedOrigin && selectedDestination && selectedRouteStops && selectedRouteStops.length > 0) {
+      const originIndex = selectedRouteStops.findIndex(stop => stop.stopName === selectedOrigin);
+      const destinationIndex = selectedRouteStops.findIndex(stop => stop.stopName === selectedDestination);
+      
+      if (originIndex !== -1 && destinationIndex !== -1) {
+        // Determine desired direction: 0 = forward (destination > origin), 1 = reverse (destination < origin)
+        const desiredDirection = destinationIndex >= originIndex ? 0 : 1;
+        
+        console.log('DEBUG filteredBuses:', {
+          allBusesCount: buses.length,
+          routeFilter: selectedRoute,
+          desiredDirection,
+          originIndex,
+          destinationIndex
+        });
+        
+        buses = buses.filter((bus) => {
+          // Only show buses that have a current trip (must have assigned busTrip)
+          if (!bus.currentTrip) {
+            console.log(`Bus ${bus.busId} filtered: no currentTrip`);
+            return false;
+          }
+          
+          // Get bus direction from busTrip
+          const busTrip = busTrips.find(trip => trip.tripId === bus.currentTrip);
+          if (!busTrip || busTrip.direction === undefined) {
+            console.log(`Bus ${bus.busId} filtered: no busTrip or direction`);
+            return false;
+          }
+          
+          // Only show buses going in the right direction
+          if (busTrip.direction !== desiredDirection) {
+            console.log(`Bus ${bus.busId} filtered: direction ${busTrip.direction} !== ${desiredDirection}`);
+            return false;
+          }
+
+          // Only show buses that haven't passed the origin
+          if (!bus.location) {
+            console.log(`Bus ${bus.busId} filtered: no location data`);
+            return false;
+          }
+
+          let currentStopIndex = -1;
+          let minDist = Infinity;
+          selectedRouteStops.forEach((stop, idx) => {
+            const dist = getDistanceKm(bus.location.latitude, bus.location.longitude, stop.lat, stop.lng);
+            if (dist < minDist) {
+              minDist = dist;
+              currentStopIndex = idx;
+            }
+          });
+
+          let hasNotPassed = false;
+          if (desiredDirection === 0) {
+            // Forward: current stop should be at or before origin
+            hasNotPassed = currentStopIndex <= originIndex;
+          } else {
+            // Reverse: current stop should be at or after origin
+            hasNotPassed = currentStopIndex >= originIndex;
+          }
+
+          if (!hasNotPassed) {
+            console.log(`Bus ${bus.busId} filtered: has passed origin`);
+            return false;
+          }
+
+          console.log(`Bus ${bus.busId} INCLUDED in filteredBuses`);
+          return true;
+        });
+      }
+    }
+    
+    console.log('Final filteredBuses count:', buses.length);
+    return buses;
+  }, [selectedRoute, selectedOrigin, selectedDestination, allBuses, busTrips, selectedRouteStops]);
+
+  const selectedRouteObject = useMemo(() => {
+    if (!selectedRoute) return null;
+    return routes.find((r) => r.id === selectedRoute);
+  }, [selectedRoute, routes]);
+
+  const selectedRoutePath = useMemo(() => {
+    return selectedRouteDetails ? selectedRouteDetails.coordinates : [];
+  }, [selectedRouteDetails]);
 
   const stopPickerItems = useMemo(() => {
     if (!selectedRouteStops || selectedRouteStops.length === 0) return [];
@@ -183,10 +292,13 @@ const BusRoutesScreen = () => {
     const originIndex = selectedRouteStops.findIndex(stop => stop.stopName === selectedOrigin);
     if (originIndex === -1) return [];
     
-    return selectedRouteStops.map(stop => ({
+    // Show all stops except the origin itself
+    return selectedRouteStops
+      .filter((stop, index) => index !== originIndex)
+      .map(stop => ({
         label: stop.stopName,
         value: stop.stopName,
-    }));
+      }));
   }, [selectedOrigin, selectedRouteStops]);
 
   // Format routes data for the picker
@@ -202,39 +314,12 @@ const BusRoutesScreen = () => {
       Alert.alert('Missing Information', 'Please select both an origin and a destination.');
       return;
     }
-
-    const startTrip = async () => {
-      try {
-        const response = await apiClient.post('/api/trip/start', {
-          busId: bus.busId,
-          departure: selectedOrigin,
-          destination: selectedDestination,
-        });
-
-        const tripId = response?.data?.id || response?.data?._id || null;
-
-        navigation.navigate('CurrentTrip', {
-          busId: bus.busId,
-          routeId: bus.routeId,
-          origin: selectedOrigin,
-          destination: selectedDestination,
-          tripId,
-        });
-      } catch (err) {
-        console.error('Failed to start trip:', err?.response?.data || err.message);
-        Alert.alert('Unable to start trip', 'Please try again or re-login.');
-      }
-    };
-
-    Alert.alert(
-      'Confirm Trip',
-      `Travel from ${selectedOrigin} to ${selectedDestination} with Bus ${bus.busId}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => startTrip() },
-      ],
-      { cancelable: false }
-    );
+    navigation.navigate('CurrentTrip', {
+      busId: bus.busId,
+      routeId: bus.routeId,
+      origin: selectedOrigin,
+      destination: selectedDestination,
+    });
   };
 
   if (!passengerLocation || errorMsg) {
@@ -266,6 +351,10 @@ const BusRoutesScreen = () => {
         routePath={selectedRoutePath}
         stops={selectedRouteStops}
         routes={routes}
+        selectedOrigin={selectedOrigin}
+        selectedDestination={selectedDestination}
+        passengerArrivalTimes={busArrivalTimes}
+        passengerCounts={busPassengerCounts}
       />
       <View style={styles.filterOverlay}>
         <RNPickerSelect

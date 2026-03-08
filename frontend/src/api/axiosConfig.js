@@ -1,63 +1,86 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BACKEND_URL } from '../config';
+import { isTokenExpired, clearAuthData } from '../utils/authUtils';
 
-// Create axios instance with base configuration
+// Create axios instance
 const apiClient = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  timeout: 100000,
 });
 
-// Request interceptor - add auth token to requests
+// Store navigation reference (will be set from App.js)
+let navigationRef = null;
+
+export const setNavigationRef = (ref) => {
+  navigationRef = ref;
+};
+
+// Request interceptor - Add token to all requests
 apiClient.interceptors.request.use(
   async (config) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
+      
       if (token) {
+        // Check if token is expired
+        if (isTokenExpired(token)) {
+          console.log('Token expired, redirecting to login');
+          await clearAuthData();
+          
+          // Navigate to login if navigationRef is available
+          if (navigationRef) {
+            navigationRef.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          }
+          
+          return Promise.reject(new Error('Token expired'));
+        }
+        
         config.headers.Authorization = `Bearer ${token}`;
       }
+      
+      return config;
     } catch (error) {
-      console.error('Error getting token from storage:', error);
+      console.error('Request interceptor error:', error);
+      return config;
     }
-    return config;
   },
   (error) => {
     return Promise.reject(error);
   }
 );
 
-// Response interceptor - handle errors globally
+// Response interceptor - Handle 401 errors and token refresh
 apiClient.interceptors.response.use(
   (response) => {
     return response;
   },
   async (error) => {
-    if (error.response) {
-      // Server responded with error status
-      const { status, data } = error.response;
+    const originalRequest = error.config;
+    
+    // Handle 401 Unauthorized errors
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
       
-      if (status === 401) {
-        // Unauthorized - clear token and redirect to login
-        await AsyncStorage.removeItem('userToken');
-        // Note: Navigation will be handled by your SessionContext
-      } else if (status === 403) {
-        // Forbidden
-        console.error('Access forbidden:', data.message);
-      } else if (status >= 500) {
-        // Server error
-        console.error('Server error:', data.message);
+      console.log('401 Unauthorized - Token invalid or expired');
+      
+      // Clear token and redirect to login
+      await clearAuthData();
+      
+      if (navigationRef) {
+        navigationRef.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
       }
-    } else if (error.request) {
-      // Request was made but no response received
-      console.error('No response from server:', error.message);
-    } else {
-      // Something else happened
-      console.error('Request error:', error.message);
+      
+      return Promise.reject(error);
     }
     
+    // Handle other errors
     return Promise.reject(error);
   }
 );

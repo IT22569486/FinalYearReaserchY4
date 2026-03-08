@@ -10,14 +10,10 @@ import {
   updateLastActivity,
   isInactive 
 } from '../utils/authUtils';
-import ScreenLockOverlay from '../components/ScreenLockOverlay';
 
 const SessionContext = createContext();
 
 export const useSession = () => useContext(SessionContext);
-
-// Screen lock timeout in minutes
-const SCREEN_LOCK_TIMEOUT = 20; // 20 minutes
 
 export const SessionProvider = ({ children }) => {
   const navigation = useNavigation();
@@ -25,13 +21,10 @@ export const SessionProvider = ({ children }) => {
   const inactivityTimerRef = useRef(null);
   const screenLockTimerRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
-  const [isScreenLocked, setIsScreenLocked] = useState(false);
 
   useEffect(() => {
     checkTokenExpiration();
-    setupInactivityMonitoring();
-    setupScreenLockMonitoring();
-    
+    setupInactivityMonitoring();    
     // Keep screen awake initially
     activateKeepAwakeAsync('app-active');
     
@@ -98,42 +91,12 @@ export const SessionProvider = ({ children }) => {
     
     // Check for inactivity every minute
     inactivityTimerRef.current = setInterval(async () => {
-      const userInactive = await isInactive(20); // 20 minutes
+      const userInactive = await isInactive(30); // 30 minutes
       
       if (userInactive) {
         handleLogout('Session expired due to inactivity');
       }
     }, 60000); // Check every minute
-  };
-
-  const setupScreenLockMonitoring = async () => {
-    // Check for screen lock inactivity every 30 seconds
-    screenLockTimerRef.current = setInterval(async () => {
-      const lastActivity = await AsyncStorage.getItem('lastActivity');
-      
-      if (lastActivity) {
-        const lastActivityTime = parseInt(lastActivity, 10);
-        const currentTime = Date.now();
-        const inactiveTime = currentTime - lastActivityTime;
-        const lockTimeout = SCREEN_LOCK_TIMEOUT * 60 * 1000; // Convert to ms
-        
-        // Lock screen if inactive for defined period but not logged out yet
-        if (inactiveTime > lockTimeout && !isScreenLocked) {
-          console.log('Locking screen due to inactivity');
-          setIsScreenLocked(true);
-          // Stop keeping screen awake - allows device to dim/sleep
-          deactivateKeepAwake('app-active');
-        }
-      }
-    }, 30000); // Check every 30 seconds
-  };
-
-  const handleUnlockScreen = async () => {
-    console.log('Screen unlocked by user');
-    setIsScreenLocked(false);
-    await updateLastActivity();
-    // Resume keeping screen awake
-    activateKeepAwakeAsync('app-active');
   };
 
   const handleLogout = async (reason = 'Session ended') => {
@@ -158,27 +121,16 @@ export const SessionProvider = ({ children }) => {
       clearInterval(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
-
-    if (screenLockTimerRef.current) {
-      clearInterval(screenLockTimerRef.current);
-      screenLockTimerRef.current = null;
-    }
   };
 
   const refreshSession = async () => {
     await updateLastActivity();
     await checkTokenExpiration();
-    // Unlock screen when session is refreshed
-    if (isScreenLocked) {
-      setIsScreenLocked(false);
-      activateKeepAwakeAsync('app-active');
-    }
   };
 
   return (
     <SessionContext.Provider value={{ refreshSession, handleLogout }}>
       {children}
-      <ScreenLockOverlay visible={isScreenLocked} onUnlock={handleUnlockScreen} />
     </SessionContext.Provider>
   );
 };
