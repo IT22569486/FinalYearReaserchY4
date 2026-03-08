@@ -43,6 +43,7 @@
       "yolo_imgsz": 384,
       "depth_input_size": [256, 256]
     },
+    
     "safe_speed_monitoring": {
       "enabled": true
     },
