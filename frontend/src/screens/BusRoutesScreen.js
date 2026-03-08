@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import RNPickerSelect from 'react-native-picker-select';
 import { Ionicons } from '@expo/vector-icons';
-import io from 'socket.io-client';
 import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import MapViewComponent from '../components/MapViewComponent';
-import { BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
 import { calculateBusPredictions, getLastThreeRecordsOfTrip, getDistanceKm } from '../services/predictionService';
+import socketService from '../services/socketService';
 
-const socket = io(BACKEND_URL);
+// Track which bus IDs have received live MQTT updates
+const LIVE_TIMEOUT_MS = 60000; // 60 seconds without update = not live
 
 const BusRoutesScreen = () => {
   const [allBuses, setAllBuses] = useState([]);
@@ -28,6 +28,9 @@ const BusRoutesScreen = () => {
   const [errorMsg, setErrorMsg] = useState(null);
   const [busArrivalTimes, setBusArrivalTimes] = useState({});
   const [busPassengerCounts, setBusPassengerCounts] = useState({});
+  const [socketConnected, setSocketConnected] = useState(false);
+  // Map of bus_id → last received MQTT timestamp (ms)
+  const liveTimestamps = useRef({});
   const navigation = useNavigation();
   const { refreshSession } = useSession();
 
@@ -74,22 +77,73 @@ const BusRoutesScreen = () => {
 
       fetchData();
 
-      socket.on('busLocationUpdate', (updatedBus) => {
+      // Connect socket and subscribe to live MQTT telemetry
+      socketService.connect();
+      socketService.subscribeToAllBuses();
+
+      const unsubscribeLocation = socketService.subscribe('bus_location_update', (data) => {
+        const mqttBusId = data.bus_id || data.busId;
+        if (!mqttBusId) return;
+
+        // Track live timestamp for this bus
+        liveTimestamps.current[mqttBusId] = Date.now();
+
         setAllBuses((prevBuses) => {
-          const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
+          const index = prevBuses.findIndex(
+            (b) => b.busId === mqttBusId || b.bus_id === mqttBusId
+          );
+
+          const liveFields = {
+            isLive: true,
+            location: { latitude: data.latitude, longitude: data.longitude },
+            latitude: data.latitude,
+            longitude: data.longitude,
+            speed: data.speed || 0,
+            passenger_count: data.passenger_count || 0,
+            total_weight: data.total_weight || 0,
+            gps_valid: data.gps_valid,
+          };
 
           if (index !== -1) {
-            // Merge the update with existing bus data to preserve all fields
+            const updated = [...prevBuses];
+            updated[index] = { ...prevBuses[index], ...liveFields };
+            return updated;
+          }
+          // Bus not yet in DB list — add from MQTT
+          return [...prevBuses, {
+            busId: mqttBusId,
+            bus_id: mqttBusId,
+            routeId: data.route_id,
+            status: 'online',
+            occupancy: data.passenger_count || 0,
+            capacity: 50,
+            ...liveFields,
+          }];
+        });
+      });
+
+      // Legacy backend socket event
+      const unsubscribeLegacy = socketService.subscribe('busLocationUpdate', (updatedBus) => {
+        setAllBuses((prevBuses) => {
+          const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
+          if (index !== -1) {
             const newBuses = [...prevBuses];
             newBuses[index] = { ...prevBuses[index], ...updatedBus };
             return newBuses;
           }
-          // If bus not found in list, add it
           return [...prevBuses, updatedBus];
         });
       });
 
-      return () => socket.off('busLocationUpdate');
+      const unsubscribeStatus = socketService.subscribe('connection_status', (s) => {
+        setSocketConnected(s.connected);
+      });
+
+      return () => {
+        unsubscribeLocation();
+        unsubscribeLegacy();
+        unsubscribeStatus();
+      };
     } catch (error) {
       console.error('Error initializing BusRoutesScreen:', error);
     }

@@ -1,14 +1,14 @@
 # Core inference (Raspberry Pi optimized)
 onnxruntime>=1.15.0
 opencv-python>=4.5.5
-numpy==1.24.3
+numpy>=1.26.0
 
 # MQTT & system monitoring
 paho-mqtt>=1.6.0
 psutil>=5.9.0
 
 # Driver Monitoring System (DMS)
-mediapipe==0.10.14
+mediapipe>=0.10.30
 scipy>=1.10.0
 joblib>=1.2.0
 

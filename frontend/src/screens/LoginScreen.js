@@ -22,6 +22,7 @@ const LoginScreen = () => {
   // Firebase Google Sign-In using expo-auth-session
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     expoClientId: '525212256594-csailp63qiomntb6f9srkbc6as3avjv7.apps.googleusercontent.com',
+    androidClientId: '525212256594-REPLACE_WITH_ANDROID_CLIENT_ID.apps.googleusercontent.com',
     iosClientId: '525212256594-f2mjfe9emr5qqq6id044oh9kk88tj64n.apps.googleusercontent.com',
     webClientId: '525212256594-csailp63qiomntb6f9srkbc6as3avjv7.apps.googleusercontent.com',
   });

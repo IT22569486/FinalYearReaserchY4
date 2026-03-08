@@ -8,7 +8,84 @@
 const { db, admin } = require("../firebase");
 
 const busesCollection = db.collection("buses");
+const liveBusesCollection = db.collection("bus_live_locations");
 const telemetryCollection = db.collection("fleet_telemetry");
+
+/**
+ * Normalize a bus document from any source into a consistent shape
+ * used by the web dashboard. Fields from ESP32 / buses collection are
+ * mapped to the same field names the frontend already expects.
+ */
+function normalizeBus(id, data, source = 'buses') {
+    const lat = data.latitude
+        || data.location?.latitude || data.location?.lat || null;
+    const lng = data.longitude
+        || data.location?.longitude || data.location?.lng || null;
+
+    return {
+        id,
+        vehicle_id: data.vehicle_id || data.busId || data.bus_id || id,
+        route_id: data.route_id || data.routeId || data.routeNumber || '',
+        latitude: lat,
+        longitude: lng,
+        location_name: data.location_name || '',
+        direction: data.direction || '',
+        safe_speed: data.safe_speed || data.speed || 0,
+        speed: data.speed || data.safe_speed || 0,
+        road_condition: data.road_condition || 'Dry',
+        passenger_count: data.passenger_count || data.occupancy || 0,
+        passenger_load_kg: data.passenger_load_kg || data.total_weight || 0,
+        temperature: data.temperature || 0,
+        humidity: data.humidity || 0,
+        status: data.status || 'unknown',
+        last_update: data.last_update || data.updatedAt || data.last_updated || null,
+        source, // track origin for debugging
+    };
+}
+
+/**
+ * Get all buses from the buses collection, overlaid with live telemetry.
+ */
+async function getMergedBuses() {
+    const [busesSnap, liveSnap] = await Promise.all([
+        busesCollection.get(),
+        liveBusesCollection.get(),
+    ]);
+
+    const map = new Map(); // keyed by vehicle_id
+
+    // 1. buses collection (ESP32 auto-created / admin seeded)
+    busesSnap.docs.forEach(doc => {
+        const data = doc.data();
+        const vid = data.busId || data.vehicle_id || doc.id;
+        map.set(vid, normalizeBus(doc.id, data, 'buses'));
+    });
+
+    // 3. bus_live_locations (real-time telemetry — overlay live fields)
+    liveSnap.docs.forEach(doc => {
+        const data = doc.data();
+        const vid = data.bus_id || doc.id;
+        const existing = map.get(vid);
+        if (existing) {
+            // Overlay live fields onto the existing entry
+            if (data.latitude) existing.latitude = data.latitude;
+            if (data.longitude) existing.longitude = data.longitude;
+            if (data.speed) { existing.speed = data.speed; existing.safe_speed = existing.safe_speed || data.speed; }
+            if (data.passenger_count != null) existing.passenger_count = data.passenger_count;
+            if (data.total_weight) existing.passenger_load_kg = data.total_weight;
+            if (data.status === 'online') existing.status = 'online';
+            if (data.last_updated) existing.last_update = typeof data.last_updated?.toDate === 'function'
+                ? data.last_updated.toDate().toISOString() : data.last_updated;
+            if (data.route_id) existing.route_id = existing.route_id || data.route_id;
+            if (data.route_name) existing.route_name = data.route_name;
+        } else {
+            // Brand new live-only bus
+            map.set(vid, normalizeBus(doc.id, data, 'bus_live_locations'));
+        }
+    });
+
+    return Array.from(map.values());
+}
 
 /**
  * Create or update bus data from telemetry
@@ -101,8 +178,7 @@ async function addTelemetryRecord(data) {
  * Get fleet overview statistics
  */
 async function getFleetOverview() {
-    const snapshot = await busesCollection.get();
-    const buses = snapshot.docs.map(doc => doc.data());
+    const buses = await getMergedBuses();
     
     const totalBuses = buses.length;
     const onlineThreshold = new Date(Date.now() - 30000); // 30 seconds
@@ -141,25 +217,13 @@ async function getFleetOverview() {
  * Get all buses
  */
 async function getAllBuses() {
-    const snapshot = await busesCollection.get();
+    const buses = await getMergedBuses();
     const onlineThreshold = new Date(Date.now() - 30000);
 
-    const buses = snapshot.docs.map(doc => {
-        const bus = doc.data();
-        let isOnline = false;
+    buses.forEach(bus => {
         if (bus.last_update) {
-            isOnline = new Date(bus.last_update) >= onlineThreshold;
+            bus.status = new Date(bus.last_update) >= onlineThreshold ? 'online' : 'offline';
         }
-        // Normalize coordinates: fall back to location.lat/lng if top-level fields missing
-        const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
-        const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
-        return {
-            id: doc.id,
-            ...bus,
-            latitude: lat,
-            longitude: lng,
-            status: isOnline ? 'online' : 'offline'
-        };
     });
 
     buses.sort((a, b) => (a.busId || '').localeCompare(b.busId || ''));
@@ -170,22 +234,14 @@ async function getAllBuses() {
  * Get specific bus details
  */
 async function getBusDetails(vehicleId) {
-    const doc = await busesCollection.doc(vehicleId).get();
-    if (!doc.exists) return null;
+    // Search across all collections for this bus
+    const buses = await getMergedBuses();
+    const bus = buses.find(b => b.vehicle_id === vehicleId || b.id === vehicleId);
+    if (!bus) return null;
 
-    const bus = doc.data();
     const onlineThreshold = new Date(Date.now() - 30000);
-    const isOnline = bus.last_update ? new Date(bus.last_update) >= onlineThreshold : false;
-    const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
-    const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
-
-    return {
-        id: doc.id,
-        ...bus,
-        latitude: lat,
-        longitude: lng,
-        status: isOnline ? 'online' : 'offline'
-    };
+    bus.status = bus.last_update ? new Date(bus.last_update) >= onlineThreshold ? 'online' : 'offline' : 'offline';
+    return bus;
 }
 
 /**
@@ -228,30 +284,25 @@ async function getBusHistory(vehicleId, hours = 24, limit = 100) {
  * Get map data for all buses
  */
 async function getMapData() {
-    const snapshot = await busesCollection.get();
+    const allBuses = await getMergedBuses();
     const onlineThreshold = new Date(Date.now() - 30000);
 
-    const buses = snapshot.docs
-        .map(doc => {
-            const bus = doc.data();
-            // Fall back to location.lat/lng if top-level latitude/longitude missing or zero
-            const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
-            const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
-            if (!lat || !lng) return null;
-            const isOnline = bus.last_update ? new Date(bus.last_update) >= onlineThreshold : false;
-            return {
-                busId: bus.busId || doc.id,
-                latitude: lat,
-                longitude: lng,
-                location_name: bus.location_name || '',
-                safe_speed: bus.safe_speed || 0,
-                road_condition: bus.road_condition || 'Dry',
-                direction: bus.direction || '',
-                occupancy: bus.occupancy || 0,
-                status: isOnline ? 'online' : 'offline'
-            };
-        })
-        .filter(Boolean);
+    const buses = allBuses
+        .filter(bus => bus.latitude && bus.longitude)
+        .map(bus => ({
+            vehicle_id: bus.vehicle_id,
+            latitude: bus.latitude,
+            longitude: bus.longitude,
+            location_name: bus.location_name,
+            safe_speed: bus.safe_speed,
+            speed: bus.speed,
+            road_condition: bus.road_condition,
+            direction: bus.direction,
+            passenger_count: bus.passenger_count,
+            route_id: bus.route_id,
+            route_name: bus.route_name || '',
+            status: bus.last_update ? new Date(bus.last_update) >= onlineThreshold ? 'online' : 'offline' : 'offline'
+        }));
 
     return { buses, count: buses.length };
 }
@@ -260,14 +311,12 @@ async function getMapData() {
  * Get unique routes
  */
 async function getRoutes() {
-    const snapshot = await busesCollection.get();
+    const buses = await getMergedBuses();
     const routeCounts = {};
 
-    snapshot.docs.forEach(doc => {
-        const bus = doc.data();
-        const rid = bus.routeId || bus.route_id;
-        if (rid) {
-            routeCounts[rid] = (routeCounts[rid] || 0) + 1;
+    buses.forEach(bus => {
+        if (bus.route_id) {
+            routeCounts[bus.route_id] = (routeCounts[bus.route_id] || 0) + 1;
         }
     });
 
@@ -283,8 +332,7 @@ async function getRoutes() {
  * Get fleet statistics
  */
 async function getStatistics() {
-    const busSnapshot = await busesCollection.get();
-    const buses = busSnapshot.docs.map(doc => doc.data());
+    const buses = await getMergedBuses();
 
     // Speed distribution
     const speedRanges = [

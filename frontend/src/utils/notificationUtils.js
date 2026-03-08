@@ -1,5 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { Alert } from 'react-native';
+import Constants from 'expo-constants';
+
+// Only register push notifications in a real/development build, not Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -12,6 +16,10 @@ Notifications.setNotificationHandler({
 
 // Request notification permissions
 export const requestNotificationPermissions = async () => {
+  if (isExpoGo) {
+    console.log('Skipping push notification permissions in Expo Go');
+    return false;
+  }
   try {
     const { status } = await Notifications.requestPermissionsAsync();
     console.log('Notification permissions requested:', status);
@@ -81,6 +89,10 @@ export const sendNotification = async (title, message, data = {}, options = {}) 
 
 // Set up notification listeners
 export const setupNotificationListeners = (onNotificationReceived) => {
+  if (isExpoGo) {
+    console.log('Skipping push notification listeners in Expo Go');
+    return () => {};
+  }
   console.log('Setting up notification listeners');
   
   // Listen for notifications when app is in foreground

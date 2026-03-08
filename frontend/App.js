@@ -1,7 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation';
 import { updateLastActivity } from './src/utils/authUtils';
+
+// Disable automatic push token registration in Expo Go to suppress SDK 53+ console error
+if (Constants.appOwnership === 'expo') {
+  Notifications.setAutoServerRegistrationEnabledAsync(false).catch(() => {});
+}
 
 const App = () => {
   const appState = useRef(AppState.currentState);

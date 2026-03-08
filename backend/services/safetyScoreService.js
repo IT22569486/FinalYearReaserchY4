@@ -42,14 +42,21 @@ class SafetyScoreService {
 
   async getBusSafetyData(busId) {
     try {
-      // 1. Find bus by doc ID in buses collection (doc ID = busId)
+      // 1. Find bus in the buses collection
       let busDoc = await db.collection('buses').doc(busId).get();
       if (!busDoc.exists) {
-        // Fallback: search by busId field
-        const snap = await db.collection('buses').where('busId', '==', busId).limit(1).get();
-        if (snap.empty) throw new Error(`Bus not found: ${busId}`);
-        busDoc = snap.docs[0];
+        const snap = await db.collection('buses').where('vehicle_id', '==', busId).limit(1).get();
+        if (!snap.empty) {
+          busDoc = snap.docs[0];
+        } else {
+          const bSnap = await db.collection('buses').where('busId', '==', busId).limit(1).get();
+          if (!bSnap.empty) {
+            busDoc = bSnap.docs[0];
+          }
+        }
       }
+
+      if (!busDoc || !busDoc.exists) throw new Error(`Bus not found: ${busId}`);
       const busData = busDoc.data();
 
       // 2. Find device linked to this bus via busNumber (= vehicle_id)
