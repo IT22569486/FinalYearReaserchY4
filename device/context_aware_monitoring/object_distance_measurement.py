@@ -381,7 +381,8 @@ def main():
     if video_path == '0':
         cap = cv2.VideoCapture(_cfg.camera_index)
     else:
-        if not Path(video_path).exists():
+        is_stream = video_path.startswith(("http://", "https://", "rtsp://", "rtmp://"))
+        if not is_stream and not Path(video_path).exists():
             print(f"ERROR: Video not found: {video_path}")
             return
         cap = cv2.VideoCapture(video_path)
