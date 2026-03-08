@@ -328,7 +328,9 @@ class FirebaseService:
                 'latitude': telemetry.get('latitude'),
                 'longitude': telemetry.get('longitude'),
                 'speed': telemetry.get('speed', 0),
-                'passenger_count': telemetry.get('passenger_count', 0),
+                'passenger_in_count': telemetry.get('passenger_in_count', 0),
+                'passenger_out_count': telemetry.get('passenger_out_count', 0),
+                'total_passenger_count': telemetry.get('total_passenger_count', telemetry.get('passenger_count', 0)),
                 'total_weight': telemetry.get('total_weight', 0),
                 'gps_valid': telemetry.get('gps_valid', True),
                 'status': 'online',
@@ -374,3 +376,55 @@ class FirebaseService:
         except Exception as e:
             logger.error(f"Error storing speed violation: {e}")
             raise
+    
+    # ==========================================
+    # Bus Stop Sensor Data Operations
+    # ==========================================
+    
+    async def store_bus_stop_data(self, bus_id: str, stop_data: dict) -> str:
+        """Store bus stop sensor data (collected when bus was stopped, sent when moving again)"""
+        try:
+            collection_ref = self.db.collection('bus_stop_sensor_data')
+            
+            data = {
+                'bus_id': bus_id,
+                'route_id': stop_data.get('route_id'),
+                'latitude': stop_data.get('latitude', 0),
+                'longitude': stop_data.get('longitude', 0),
+                'passenger_in_count': stop_data.get('passenger_in_count', 0),
+                'passenger_out_count': stop_data.get('passenger_out_count', 0),
+                'total_passenger_count': stop_data.get('total_passenger_count', 0),
+                'load_cell_weight': stop_data.get('load_cell_weight', 0),
+                'speed': stop_data.get('speed', 0),
+                'stop_duration_ms': stop_data.get('stop_duration_ms', 0),
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'device_timestamp': stop_data.get('timestamp')
+            }
+            
+            doc_ref = collection_ref.add(data)
+            logger.info(
+                f"Bus stop data stored for {bus_id}: "
+                f"in={data['passenger_in_count']}, out={data['passenger_out_count']}, "
+                f"total={data['total_passenger_count']}, weight={data['load_cell_weight']}kg"
+            )
+            
+            return doc_ref[1].id
+            
+        except Exception as e:
+            logger.error(f"Error storing bus stop data: {e}")
+            raise
+    
+    async def get_recent_stop_data(self, bus_id: str, limit: int = 20) -> list:
+        """Get recent bus stop sensor data for a bus"""
+        try:
+            docs = (
+                self.db.collection('bus_stop_sensor_data')
+                .where('bus_id', '==', bus_id)
+                .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+            return [{'id': doc.id, **doc.to_dict()} for doc in docs]
+        except Exception as e:
+            logger.error(f"Error getting bus stop data: {e}")
+            return []

@@ -204,7 +204,7 @@ class DeviceHealthMonitor:
             # Add process ID to client_id to allow multiple processes (e.g., main.py subprocess)
             import os
             unique_client_id = f"{self.device_key}-{os.getpid()}"
-            self.mqtt_client = mqtt.Client(client_id=unique_client_id, protocol=mqtt.MQTTv311)
+            self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1, client_id=unique_client_id, protocol=mqtt.MQTTv311)
             
             if self.mqtt_username and self.mqtt_password:
                 self.mqtt_client.username_pw_set(self.mqtt_username, self.mqtt_password)

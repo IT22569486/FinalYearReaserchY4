@@ -57,3 +57,17 @@ class SafeSpeedPrediction(BaseModel):
     safe_speed: float
     location_name: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+class BusStopData(BaseModel):
+    bus_id: str
+    route_id: Optional[str] = None
+    latitude: Optional[float] = 0.0
+    longitude: Optional[float] = 0.0
+    passenger_in_count: Optional[int] = 0
+    passenger_out_count: Optional[int] = 0
+    total_passenger_count: Optional[int] = 0
+    load_cell_weight: Optional[float] = 0.0
+    speed: Optional[float] = 0.0
+    stop_duration_ms: Optional[int] = 0
+    timestamp: Optional[str] = None

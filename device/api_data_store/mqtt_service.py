@@ -34,17 +34,20 @@ class MQTTService:
         # Callback handlers
         self._on_gps_message: Callable = None
         self._on_passenger_message: Callable = None
+        self._on_stop_data_message: Callable = None
         self._on_connect_callback: Callable = None
         
     def set_handlers(
         self,
         on_gps: Callable = None,
         on_passenger: Callable = None,
+        on_stop_data: Callable = None,
         on_connect: Callable = None
     ):
         """Set message handlers"""
         self._on_gps_message = on_gps
         self._on_passenger_message = on_passenger
+        self._on_stop_data_message = on_stop_data
         self._on_connect_callback = on_connect
     
     def connect(self):
@@ -114,7 +117,8 @@ class MQTTService:
         topics = [
             ('bus/+/telemetry', 0),  # ESP32 v8 telemetry (GPS + passengers + weight)
             ('bus/+/gps', 0),        # Legacy GPS topic
-            ('bus/+/passenger', 0)   # Legacy passenger topic
+            ('bus/+/passenger', 0),  # Legacy passenger topic
+            ('bus/+/stop-data', 0)   # Bus stop sensor data (sent when bus starts moving)
         ]
         
         for topic, qos in topics:
@@ -147,6 +151,8 @@ class MQTTService:
                     asyncio.run(self._on_gps_message(bus_id, payload))
                 elif message_type == 'passenger' and self._on_passenger_message:
                     asyncio.run(self._on_passenger_message(bus_id, payload))
+                elif message_type == 'stop-data' and self._on_stop_data_message:
+                    asyncio.run(self._on_stop_data_message(bus_id, payload))
                     
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON payload: {e}")

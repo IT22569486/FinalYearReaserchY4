@@ -34,8 +34,8 @@ const int mqtt_port = 1883;
 
 // Bus Configuration (stored in flash)
 Preferences preferences;
-String BUS_ID = "BUS001";
-String ROUTE_ID = "ROUTE001";
+String BUS_ID = "NA-225566";
+String ROUTE_ID = "177_Kaduwela_Kollupitiya";
 
 //////////////////////////////////////
 // MQTT
@@ -47,6 +47,7 @@ PubSubClient client(espClient);
 // Dynamic topics (built with BUS_ID)
 String TELEMETRY_TOPIC;
 String SAFE_SPEED_TOPIC;
+String STOP_DATA_TOPIC;
 
 //////////////////////////////////////
 // GPS
@@ -83,6 +84,12 @@ int passengerIn = 0;
 int passengerOut = 0;
 int sessionIn = 0;   // Per-stop counter
 int sessionOut = 0;  // Per-stop counter
+
+// Bus stop detection state
+bool busIsStopped = false;
+float stopLatitude = 0;
+float stopLongitude = 0;
+unsigned long stopStartTime = 0;
 
 unsigned long lastTriggerTime = 0;
 const int freezeTime = 2000;
@@ -140,6 +147,7 @@ void loadConfig() {
   // Build MQTT topics
   TELEMETRY_TOPIC = "bus/" + BUS_ID + "/telemetry";
   SAFE_SPEED_TOPIC = "bus/" + BUS_ID + "/safe-speed";
+  STOP_DATA_TOPIC = "bus/" + BUS_ID + "/stop-data";
   
   Serial.println("Config loaded:");
   Serial.println("  Bus ID: " + BUS_ID);
@@ -161,6 +169,7 @@ void saveConfig(String busId, String routeId, float calFactor) {
   // Rebuild topics
   TELEMETRY_TOPIC = "bus/" + BUS_ID + "/telemetry";
   SAFE_SPEED_TOPIC = "bus/" + BUS_ID + "/safe-speed";
+  STOP_DATA_TOPIC = "bus/" + BUS_ID + "/stop-data";
 }
 
 //////////////////////////////////////
@@ -361,11 +370,11 @@ void updateDisplay() {
   // Divider
   tft.drawLine(0, 40, 320, 40, ILI9341_DARKGREY);
 
-  // Speed Section
+  // Speed Section - SAFE SPEED as primary display
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(20, 50);
-  tft.print("Speed:");
+  tft.print("SAFE SPEED:");
   
   tft.setTextSize(3);
   if (isOverSpeed) {
@@ -374,35 +383,30 @@ void updateDisplay() {
     tft.setTextColor(ILI9341_GREEN);
   }
   tft.setCursor(20, 75);
-  tft.print(speedKmh, 1);
-  tft.print(" km/h");
-
-  // Safe Speed
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(180, 50);
-  tft.print("Safe:");
-  
-  tft.setTextSize(3);
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.setCursor(180, 75);
   tft.print(safeSpeed, 0);
   tft.print(" km/h");
 
   // Divider
   tft.drawLine(0, 115, 320, 115, ILI9341_DARKGREY);
 
-  // Location
+  // Current Location (latitude, longitude)
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(20, 125);
-  tft.print("Location: ");
+  tft.print("LOCATION:");
+  tft.setTextSize(1);
   tft.setTextColor(ILI9341_YELLOW);
-  tft.print(locationName);
+  tft.setCursor(20, 145);
+  tft.print("(");
+  tft.print(latitude, 6);
+  tft.print(", ");
+  tft.print(longitude, 6);
+  tft.print(")");
 
   // Passenger Section
+  tft.setTextSize(2);
   tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(20, 155);
+  tft.setCursor(20, 165);
   tft.print("Passengers: ");
   tft.setTextColor(ILI9341_CYAN);
   tft.print(passengerCount);
@@ -417,20 +421,22 @@ void updateDisplay() {
 
   // Weight
   tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(20, 180);
+  tft.setCursor(20, 190);
   tft.print("Weight: ");
   tft.setTextColor(ILI9341_MAGENTA);
   tft.print(busWeight, 1);
   tft.print(" kg");
 
-  // GPS Coordinates
+  // Bus stop status
   tft.setTextSize(1);
-  tft.setTextColor(ILI9341_DARKGREY);
-  tft.setCursor(20, 210);
-  tft.print("GPS: ");
-  tft.print(latitude, 6);
-  tft.print(", ");
-  tft.print(longitude, 6);
+  tft.setCursor(20, 215);
+  if (busIsStopped) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print("BUS STOPPED - Collecting data...");
+  } else {
+    tft.setTextColor(ILI9341_GREEN);
+    tft.print("BUS MOVING");
+  }
 }
 
 //////////////////////////////////////
@@ -450,7 +456,9 @@ void sendTelemetry() {
   doc["latitude"] = latitude;
   doc["longitude"] = longitude;
   doc["speed"] = speedKmh;
-  doc["passenger_count"] = passengerCount;
+  doc["passenger_in_count"] = passengerIn;
+  doc["passenger_out_count"] = passengerOut;
+  doc["total_passenger_count"] = passengerCount;
   doc["total_weight"] = busWeight;
   doc["gps_valid"] = gpsValid;
   doc["timestamp"] = millis();
@@ -460,6 +468,37 @@ void sendTelemetry() {
 
   client.publish(TELEMETRY_TOPIC.c_str(), payload.c_str());
   Serial.println("Telemetry: " + payload);
+}
+
+//////////////////////////////////////
+// SEND BUS STOP DATA (when bus starts moving again)
+//////////////////////////////////////
+
+void sendStopData() {
+  if (!client.connected()) {
+    connectMQTT();
+    if (!client.connected()) return;
+  }
+
+  StaticJsonDocument<512> doc;
+
+  doc["bus_id"] = BUS_ID;
+  doc["route_id"] = ROUTE_ID;
+  doc["latitude"] = stopLatitude;
+  doc["longitude"] = stopLongitude;
+  doc["passenger_in_count"] = sessionIn;
+  doc["passenger_out_count"] = sessionOut;
+  doc["total_passenger_count"] = passengerCount;
+  doc["load_cell_weight"] = busWeight;
+  doc["speed"] = speedKmh;
+  doc["stop_duration_ms"] = millis() - stopStartTime;
+  doc["timestamp"] = millis();
+
+  String payload;
+  serializeJson(doc, payload);
+
+  client.publish(STOP_DATA_TOPIC.c_str(), payload.c_str());
+  Serial.println("Stop Data Sent: " + payload);
 }
 
 //////////////////////////////////////
@@ -619,7 +658,33 @@ void loop() {
   // Check overspeed
   isOverSpeed = (speedKmh > safeSpeed);
 
-  // Send telemetry periodically
+  // ---- Bus Stop Detection Logic ----
+  if (speedKmh < 5.0) {
+    // Bus is stopped or nearly stopped
+    if (!busIsStopped) {
+      // Just stopped - record stop location, reset session counters
+      busIsStopped = true;
+      stopLatitude = latitude;
+      stopLongitude = longitude;
+      stopStartTime = millis();
+      sessionIn = 0;
+      sessionOut = 0;
+      Serial.println("BUS STOPPED - collecting passenger data");
+    }
+    // While stopped: sessionIn/sessionOut accumulate via passengerCounter()
+  } else {
+    // Bus is moving
+    if (busIsStopped) {
+      // Just started moving again - send collected stop data
+      Serial.println("BUS MOVING - sending stop data");
+      sendStopData();
+      busIsStopped = false;
+      sessionIn = 0;
+      sessionOut = 0;
+    }
+  }
+
+  // Send telemetry periodically (GPS + speed every 2s)
   if (millis() - lastTelemetrySend > TELEMETRY_INTERVAL) {
     sendTelemetry();
     lastTelemetrySend = millis();

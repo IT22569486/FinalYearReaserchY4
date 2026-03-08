@@ -52,6 +52,103 @@ _comp = _cfg.get_component_config("driver_monitoring")
 # ---------------------------------------------------------------------------
 try:
     import mediapipe as mp
+
+    if hasattr(mp, 'solutions'):
+        # Old API (mediapipe < 0.10.x) — use directly
+        _FaceMeshClass = mp.solutions.face_mesh.FaceMesh
+        _HandsClass = mp.solutions.hands.Hands
+    else:
+        # New Tasks API (mediapipe 0.10.x+) — wrap to mimic old solutions API
+        import urllib.request
+        from mediapipe.tasks.python import BaseOptions
+        from mediapipe.tasks.python.vision import (
+            FaceLandmarker, FaceLandmarkerOptions,
+            HandLandmarker, HandLandmarkerOptions,
+            RunningMode,
+        )
+
+        _FACE_MODEL_URL = (
+            "https://storage.googleapis.com/mediapipe-models/"
+            "face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+        )
+        _HAND_MODEL_URL = (
+            "https://storage.googleapis.com/mediapipe-models/"
+            "hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
+        )
+
+        def _ensure_mp_model(url, model_path):
+            if not Path(model_path).exists():
+                Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+                print(f"[DMS] Downloading {Path(model_path).name} ...")
+                urllib.request.urlretrieve(url, str(model_path))
+                print(f"[DMS] Downloaded {Path(model_path).name}")
+
+        class _FaceLandmarkList:
+            """Mimics old landmark list with .landmark attribute."""
+            def __init__(self, landmarks):
+                self.landmark = landmarks
+
+        class _FaceMeshResult:
+            def __init__(self, tasks_result):
+                self.multi_face_landmarks = (
+                    [_FaceLandmarkList(lms) for lms in tasks_result.face_landmarks]
+                    if tasks_result.face_landmarks else None
+                )
+
+        class _HandLandmarks:
+            def __init__(self, landmarks):
+                self.landmark = landmarks
+
+        class _HandsResult:
+            def __init__(self, tasks_result):
+                self.multi_hand_landmarks = (
+                    [_HandLandmarks(lms) for lms in tasks_result.hand_landmarks]
+                    if tasks_result.hand_landmarks else None
+                )
+
+        class _FaceMeshClass:
+            def __init__(self, refine_landmarks=True, max_num_faces=1,
+                         min_detection_confidence=0.6, min_tracking_confidence=0.5,
+                         static_image_mode=False):
+                model_path = MODELS_DIR / "face_landmarker.task"
+                _ensure_mp_model(_FACE_MODEL_URL, model_path)
+                opts = FaceLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=str(model_path)),
+                    running_mode=RunningMode.IMAGE,
+                    num_faces=max_num_faces,
+                    min_face_detection_confidence=min_detection_confidence,
+                    min_tracking_confidence=min_tracking_confidence,
+                )
+                self._landmarker = FaceLandmarker.create_from_options(opts)
+
+            def process(self, rgb_frame):
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                return _FaceMeshResult(self._landmarker.detect(mp_img))
+
+            def __enter__(self): return self
+            def __exit__(self, *args): self._landmarker.close()
+
+        class _HandsClass:
+            def __init__(self, static_image_mode=False, min_detection_confidence=0.6,
+                         min_tracking_confidence=0.5, max_num_hands=2):
+                model_path = MODELS_DIR / "hand_landmarker.task"
+                _ensure_mp_model(_HAND_MODEL_URL, model_path)
+                opts = HandLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=str(model_path)),
+                    running_mode=RunningMode.IMAGE,
+                    num_hands=max_num_hands,
+                    min_hand_detection_confidence=min_detection_confidence,
+                    min_tracking_confidence=min_tracking_confidence,
+                )
+                self._landmarker = HandLandmarker.create_from_options(opts)
+
+            def process(self, rgb_frame):
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                return _HandsResult(self._landmarker.detect(mp_img))
+
+            def __enter__(self): return self
+            def __exit__(self, *args): self._landmarker.close()
+
     MEDIAPIPE_AVAILABLE = True
 except ImportError:
     MEDIAPIPE_AVAILABLE = False
@@ -223,18 +320,16 @@ class DriverMonitor:
         self.face_mesh = None
         self.hands = None
         if MEDIAPIPE_AVAILABLE:
-            self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+            self.face_mesh = _FaceMeshClass(
                 refine_landmarks=True, max_num_faces=1,
                 min_detection_confidence=0.6, min_tracking_confidence=0.5,
                 static_image_mode=False,
             )
-            self.hands = mp.solutions.hands.Hands(
+            self.hands = _HandsClass(
                 static_image_mode=False,
                 min_detection_confidence=0.6, min_tracking_confidence=0.5,
                 max_num_hands=2,
             )
-
-        # State
         self._reset_counters()
         self.feature_buffer = deque(maxlen=SEQUENCE_LENGTH)
         self.yaw_history = []
@@ -257,7 +352,7 @@ class DriverMonitor:
         broker = _cfg.mqtt_broker
         port = _cfg.mqtt_port
         client_id = f"{self.device_key}-DMS-{os.getpid()}"
-        self.mqtt_client = mqtt.Client(client_id=client_id)
+        self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
         username = _cfg.mqtt_username
         password = _cfg.mqtt_password
         if username:

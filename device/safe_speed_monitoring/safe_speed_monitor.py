@@ -20,7 +20,7 @@ import sys
 import time
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from functools import lru_cache
 
@@ -59,53 +59,6 @@ if str(DEVICE_DIR) not in sys.path:
 
 from shared.config import DeviceConfig
 
-# ============================================================================
-# ROUTE DATA - Bus stops along route 177 (Kaduwela to Kollupitiya)
-# From ESP32 firmware
-# ============================================================================
-ROUTE_STOPS = [
-    {"stop_id": "R177_KAD_001", "name": "Kaduwela", "lat": 6.936372181, "lon": 79.98325019, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_002", "name": "Kaduwela Town", "lat": 6.935329641, "lon": 79.98397893, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_003", "name": "Kothalawala Temple", "lat": 6.932240099, "lon": 79.98248311, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_004", "name": "Kothalawala School", "lat": 6.930063653, "lon": 79.98248458, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_005", "name": "Pattiyawatte", "lat": 6.926965583, "lon": 79.98018084, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_006", "name": "Kothalawala Kaduwela", "lat": 6.925070248, "lon": 79.97862329, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_007", "name": "Vihara Mawatha", "lat": 6.921322874, "lon": 79.97505344, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_008", "name": "Seewalee Mawatha", "lat": 6.920005321, "lon": 79.97424854, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_009", "name": "Gemunupura", "lat": 6.917404122, "lon": 79.9736739, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_010", "name": "Weliwita Junction", "lat": 6.916074544, "lon": 79.97248612, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_011", "name": "SLIIT Campus Malabe", "lat": 6.914507475, "lon": 79.97221689, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_012", "name": "Sudarshana Mawatha", "lat": 6.908749956, "lon": 79.96619973, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_013", "name": "Cinec Campus Rd", "lat": 6.905666784, "lon": 79.96306153, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_014", "name": "Godalla Watte Rd", "lat": 6.904424168, "lon": 79.9610217, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_016", "name": "Malabe School", "lat": 6.903885495, "lon": 79.95606184, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_017", "name": "Millagahawatta Rd", "lat": 6.904965359, "lon": 79.94997676, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_018", "name": "Dambugahawatta Rd", "lat": 6.906235395, "lon": 79.94743113, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_019", "name": "Thalahena Junction", "lat": 6.907848815, "lon": 79.94517289, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_020", "name": "Laktharu Mawatha", "lat": 6.908439844, "lon": 79.94139676, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_021", "name": "8th Post", "lat": 6.908385827, "lon": 79.93989726, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_022", "name": "Kotte-Bope Road", "lat": 6.90845406, "lon": 79.93843988, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_023", "name": "Sri Subodhi School", "lat": 6.908384829, "lon": 79.93666962, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_024", "name": "Koswatta", "lat": 6.908008284, "lon": 79.92927693, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_026", "name": "Koswaththa Depot", "lat": 6.90595793, "lon": 79.92629212, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_027", "name": "Ganahena", "lat": 6.904294271, "lon": 79.92397595, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_029", "name": "Kanatta Road", "lat": 6.902769086, "lon": 79.92027462, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_030", "name": "Battaramulla", "lat": 6.902235201, "lon": 79.91808393, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_031", "name": "Sathsiripaya", "lat": 6.902255984, "lon": 79.91583919, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_032", "name": "Parliament Junction", "lat": 6.903192466, "lon": 79.91168618, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_033", "name": "Ethulkotte", "lat": 6.903290307, "lon": 79.90757212, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_035", "name": "HSBC Rajagiriya", "lat": 6.906667261, "lon": 79.9020666, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_036", "name": "Rajagiriya", "lat": 6.907728084, "lon": 79.89983057, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_037", "name": "Rajagiriya Bus Stop", "lat": 6.910234139, "lon": 79.89434179, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_038", "name": "Golden Key Hospital", "lat": 6.910881719, "lon": 79.88924039, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_039", "name": "Castle Street", "lat": 6.911047224, "lon": 79.88496702, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_040", "name": "House Of Fashion", "lat": 6.911394347, "lon": 79.87683624, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_041", "name": "Horton Gardens", "lat": 6.911435631, "lon": 79.87333217, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_043", "name": "Public Library", "lat": 6.912843389, "lon": 79.85804166, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_046", "name": "Kollupitiya Supermarket", "lat": 6.912076031, "lon": 79.85075444, "direction": "To Kaduwela"},
-    {"stop_id": "R177_KAD_047", "name": "Kollupitiya", "lat": 6.911120442, "lon": 79.84917074, "direction": "To Kaduwela"},
-]
-
 # Route endpoints for direction determination
 ROUTE_ENDPOINTS = {
     "177_Kaduwela_Kollupitiya": {
@@ -143,11 +96,15 @@ class SafeSpeedMonitor:
         # Intervals
         self.send_interval = self._device_cfg.send_interval
 
-        # Simulation settings
-        self.current_stop_index = 0
-        self.going_forward = True
-        self.passenger_count = 25
-        self.passenger_load_kg = 1500.0
+        # Real-time data from ESP32 (updated via MQTT telemetry)
+        self.latitude = 0.0
+        self.longitude = 0.0
+        self.speed = 0.0
+        self.gps_valid = False
+        self.passenger_count = 0
+        self.passenger_load_kg = 0.0
+        self.has_new_data = False
+        self._data_lock = threading.Lock()
 
         # Trip tracking
         self.trip_start_location = {}
@@ -173,11 +130,10 @@ class SafeSpeedMonitor:
             logger.warning("ML dependencies not available - predictions will use fallback")
             return
 
-        # Look for model files in multiple locations
+        # Look for model files
         model_locations = [
             COMPONENT_DIR / 'models',
             COMPONENT_DIR,
-            Path(__file__).parent.parent.parent / 'other' / 'Com' / 'Com' / 'esp_backend',
         ]
 
         model_path = None
@@ -211,7 +167,7 @@ class SafeSpeedMonitor:
         try:
             pid = os.getpid()
             client_id = f"{self.device_key}-safespeed-{pid}"
-            self.mqtt_client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv311)
+            self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, protocol=mqtt.MQTTv311)
 
             self.mqtt_client.on_connect = self._on_connect
             self.mqtt_client.on_disconnect = self._on_disconnect
@@ -222,7 +178,7 @@ class SafeSpeedMonitor:
             will_payload = json.dumps({
                 'device_key': self.device_key,
                 'status': 'offline',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
             self.mqtt_client.will_set(will_topic, will_payload, qos=1, retain=True)
 
@@ -237,6 +193,13 @@ class SafeSpeedMonitor:
             # Subscribe to commands
             cmd_topic = f"{self.mqtt_topic_base}/{self.device_key}/safespeed/command"
             client.subscribe(cmd_topic)
+            # Subscribe to ESP32 telemetry to get real sensor data
+            telemetry_topic = f"bus/{self.vehicle_id}/telemetry"
+            client.subscribe(telemetry_topic)
+            # Subscribe to ESP32 bus stop data
+            stop_data_topic = f"bus/{self.vehicle_id}/stop-data"
+            client.subscribe(stop_data_topic)
+            logger.info(f"Subscribed to ESP32 topics: {telemetry_topic}, {stop_data_topic}")
             # Publish online status
             self._publish_status('online')
         else:
@@ -248,9 +211,50 @@ class SafeSpeedMonitor:
         self.is_connected = False
 
     def _on_message(self, client, userdata, msg):
-        """Handle incoming MQTT commands"""
+        """Handle incoming MQTT commands and ESP32 sensor data"""
         try:
             payload = json.loads(msg.payload.decode())
+            topic = msg.topic
+
+            # Handle ESP32 telemetry - update GPS, passenger count and weight from real sensors
+            if '/telemetry' in topic and 'bus/' in topic:
+                with self._data_lock:
+                    if 'latitude' in payload and 'longitude' in payload:
+                        self.latitude = float(payload['latitude'])
+                        self.longitude = float(payload['longitude'])
+                    if 'speed' in payload:
+                        self.speed = float(payload['speed'])
+                    if 'gps_valid' in payload:
+                        self.gps_valid = bool(payload['gps_valid'])
+                    if 'total_passenger_count' in payload:
+                        self.passenger_count = int(payload['total_passenger_count'])
+                    elif 'passenger_count' in payload:
+                        self.passenger_count = int(payload['passenger_count'])
+                    if 'total_weight' in payload:
+                        self.passenger_load_kg = float(payload['total_weight'])
+                    self.has_new_data = True
+                logger.info(
+                    f"ESP32 telemetry: lat={self.latitude:.6f}, lon={self.longitude:.6f}, "
+                    f"speed={self.speed:.1f}, in={payload.get('passenger_in_count', 0)}, "
+                    f"out={payload.get('passenger_out_count', 0)}, "
+                    f"total={self.passenger_count}, weight={self.passenger_load_kg:.0f}kg"
+                )
+                return
+
+            # Handle ESP32 bus stop data - update from real stop sensor data
+            if '/stop-data' in topic and 'bus/' in topic:
+                if 'total_passenger_count' in payload:
+                    self.passenger_count = payload['total_passenger_count']
+                if 'load_cell_weight' in payload:
+                    self.passenger_load_kg = payload['load_cell_weight']
+                logger.info(
+                    f"ESP32 stop data: in={payload.get('passenger_in_count', 0)}, "
+                    f"out={payload.get('passenger_out_count', 0)}, "
+                    f"total={self.passenger_count}, weight={self.passenger_load_kg}kg"
+                )
+                return
+
+            # Handle safespeed commands
             command = payload.get('command', '')
             logger.info(f"Received command: {command}")
 
@@ -263,7 +267,7 @@ class SafeSpeedMonitor:
                 self.passenger_load_kg = payload.get('load_kg', self.passenger_load_kg)
                 logger.info(f"Passengers updated: {self.passenger_count} ({self.passenger_load_kg} kg)")
         except Exception as e:
-            logger.error(f"Error handling command: {e}")
+            logger.error(f"Error handling message: {e}")
 
     def _publish_status(self, status):
         topic = f"{self.mqtt_topic_base}/{self.device_key}/safespeed/status"
@@ -271,7 +275,7 @@ class SafeSpeedMonitor:
             'device_key': self.device_key,
             'vehicle_id': self.vehicle_id,
             'status': status,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         self._publish(topic, payload, retain=True)
 
@@ -463,44 +467,6 @@ class SafeSpeedMonitor:
         }
 
     # ========================================================================
-    # SIMULATION - Cycle through route stops (like ESP32 does)
-    # ========================================================================
-
-    def get_current_position(self):
-        """Get current simulated GPS position from route stops"""
-        if self.current_stop_index >= len(ROUTE_STOPS):
-            self.current_stop_index = len(ROUTE_STOPS) - 1
-            self.going_forward = False
-        elif self.current_stop_index < 0:
-            self.current_stop_index = 0
-            self.going_forward = True
-
-        stop = ROUTE_STOPS[self.current_stop_index]
-        return stop['lat'], stop['lon'], stop['name']
-
-    def advance_position(self):
-        """Move to next stop in route simulation"""
-        import random
-        # Simulate passenger changes
-        boarding = random.randint(0, 5)
-        alighting = random.randint(0, min(3, self.passenger_count))
-        self.passenger_count = max(0, self.passenger_count + boarding - alighting)
-        self.passenger_load_kg = self.passenger_count * 60.0  # ~60kg per passenger
-
-        if self.going_forward:
-            self.current_stop_index += 1
-            if self.current_stop_index >= len(ROUTE_STOPS):
-                self.current_stop_index = len(ROUTE_STOPS) - 1
-                self.going_forward = False
-                self.trip_start_location.clear()  # Reset trip
-        else:
-            self.current_stop_index -= 1
-            if self.current_stop_index < 0:
-                self.current_stop_index = 0
-                self.going_forward = True
-                self.trip_start_location.clear()  # Reset trip
-
-    # ========================================================================
     # MAIN LOOP
     # ========================================================================
 
@@ -508,6 +474,19 @@ class SafeSpeedMonitor:
         """Publish telemetry data via MQTT"""
         topic = f"{self.mqtt_topic_base}/{self.device_key}/safespeed/telemetry"
         self._publish(topic, data)
+
+        # Publish safe speed to the ESP32's subscribed topic: bus/{vehicle_id}/safe-speed
+        esp32_topic = f"bus/{self.vehicle_id}/safe-speed"
+        esp32_payload = {
+            'safe_speed': data.get('safe_speed', 40),
+            'location_name': data.get('location_name', 'Unknown'),
+            'road_condition': data.get('road_condition', 'Dry'),
+            'direction': data.get('direction', ''),
+            'passenger_count': data.get('passenger_count', 0),
+            'timestamp': data.get('timestamp', datetime.now(timezone.utc).isoformat())
+        }
+        self._publish(esp32_topic, esp32_payload)
+        logger.info(f"   📡 Published safe speed {data.get('safe_speed')} to {esp32_topic}")
 
         # Also update the component status
         component_topic = f"{self.mqtt_topic_base}/{self.device_key}/component"
@@ -519,7 +498,7 @@ class SafeSpeedMonitor:
                 'location': data.get('location_name', 'Unknown'),
                 'passengers': data.get('passenger_count', 0)
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
 
     def run(self):
@@ -549,15 +528,27 @@ class SafeSpeedMonitor:
 
         try:
             while self.running:
-                # Get current position
-                lat, lon, stop_name = self.get_current_position()
+                # Use real data from ESP32 telemetry
+                with self._data_lock:
+                    has_data = self.has_new_data
+                    lat = self.latitude
+                    lon = self.longitude
+                    speed = self.speed
+                    gps_valid = self.gps_valid
+                    passengers = self.passenger_count
+                    weight = self.passenger_load_kg
+                    self.has_new_data = False
 
-                logger.info(f"📍 Stop: {stop_name} ({lat:.6f}, {lon:.6f})")
-                logger.info(f"   Passengers: {self.passenger_count} ({self.passenger_load_kg:.0f} kg)")
+                if not has_data or not gps_valid or (lat == 0.0 and lon == 0.0):
+                    logger.debug("Waiting for ESP32 telemetry data...")
+                    time.sleep(2)
+                    continue
+
+                logger.info(f"📍 GPS: ({lat:.6f}, {lon:.6f}) Speed: {speed:.1f} km/h")
+                logger.info(f"   Passengers: {passengers} ({weight:.0f} kg)")
 
                 # Predict safe speed
-                data = self.predict_safe_speed(lat, lon, self.passenger_count,
-                                              self.passenger_load_kg)
+                data = self.predict_safe_speed(lat, lon, passengers, weight)
 
                 self.safe_speed = data['safe_speed']
                 self.location_name = data['location_name']
@@ -575,10 +566,7 @@ class SafeSpeedMonitor:
                 else:
                     logger.warning(f"   ⚠️ MQTT not connected - data not sent")
 
-                # Advance to next stop
-                self.advance_position()
-
-                # Wait
+                # Wait for next telemetry cycle
                 time.sleep(self.send_interval)
 
         except KeyboardInterrupt:

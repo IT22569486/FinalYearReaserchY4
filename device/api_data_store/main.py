@@ -69,7 +69,9 @@ async def handle_gps_message(bus_id: str, payload: dict):
             'latitude': payload.get('latitude'),
             'longitude': payload.get('longitude'),
             'speed': payload.get('speed', 0),
-            'passenger_count': payload.get('passenger_count', 0),
+            'passenger_in_count': payload.get('passenger_in_count', 0),
+            'passenger_out_count': payload.get('passenger_out_count', 0),
+            'total_passenger_count': payload.get('total_passenger_count', payload.get('passenger_count', 0)),
             'total_weight': payload.get('total_weight', 0),
             'gps_valid': payload.get('gps_valid', True),
             'timestamp': datetime.utcnow().isoformat()
@@ -124,6 +126,39 @@ async def handle_passenger_message(bus_id: str, payload: dict):
         logger.error(f"Error handling passenger message: {e}")
 
 
+async def handle_stop_data_message(bus_id: str, payload: dict):
+    """Handle bus stop sensor data from ESP32 (sent when bus starts moving again)"""
+    try:
+        logger.info(
+            f"Bus stop data from {bus_id}: "
+            f"in={payload.get('passenger_in_count')}, out={payload.get('passenger_out_count')}, "
+            f"total={payload.get('total_passenger_count')}, weight={payload.get('load_cell_weight')}"
+        )
+        
+        # Store in Firebase bus_stop_sensor_data collection
+        await firebase_service.store_bus_stop_data(bus_id, payload)
+        
+        # Broadcast via Socket.IO
+        broadcast_data = {
+            'bus_id': bus_id,
+            'route_id': payload.get('route_id'),
+            'latitude': payload.get('latitude'),
+            'longitude': payload.get('longitude'),
+            'passenger_in_count': payload.get('passenger_in_count', 0),
+            'passenger_out_count': payload.get('passenger_out_count', 0),
+            'total_passenger_count': payload.get('total_passenger_count', 0),
+            'load_cell_weight': payload.get('load_cell_weight', 0),
+            'speed': payload.get('speed', 0),
+            'stop_duration_ms': payload.get('stop_duration_ms', 0),
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        await socket_service.sio.emit('bus_stop_data', broadcast_data)
+        
+    except Exception as e:
+        logger.error(f"Error handling stop data message: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
@@ -155,7 +190,8 @@ async def lifespan(app: FastAPI):
     # Set MQTT message handlers
     mqtt_service.set_handlers(
         on_gps=handle_gps_message,
-        on_passenger=handle_passenger_message
+        on_passenger=handle_passenger_message,
+        on_stop_data=handle_stop_data_message
     )
     
     # Connect to MQTT broker
@@ -270,6 +306,16 @@ async def get_bus_passengers(bus_id: str, limit: int = 50):
     try:
         events = await firebase_service.get_passenger_events(bus_id, limit)
         return events
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/bus/{bus_id}/stop-data")
+async def get_bus_stop_data(bus_id: str, limit: int = 20):
+    """Get bus stop sensor data for a bus"""
+    try:
+        data = await firebase_service.get_recent_stop_data(bus_id, limit)
+        return {"bus_id": bus_id, "data": data, "count": len(data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
