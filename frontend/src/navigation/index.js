@@ -12,6 +12,7 @@ import TimetableScreen from '../screens/TimetableScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import RatingScreen from '../screens/RatingScreen';
 import BusRatingsScreen from '../screens/BusRatingsScreen';
+import BusSafetyScreen from '../screens/BusSafetyScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import { isTokenValid, isInactive, clearAuthData } from '../utils/authUtils';
 import { SessionProvider } from '../context/SessionContext';
@@ -151,6 +152,7 @@ const AppNavigator = () => {
             <Stack.Screen name="SignUp" component={SignUpScreen} />
             <Stack.Screen name="Rating" component={RatingScreen} />
             <Stack.Screen name="BusRatings" component={BusRatingsScreen} />
+            <Stack.Screen name="BusSafety" component={BusSafetyScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />  
           </Stack.Navigator>
         </SessionProvider>

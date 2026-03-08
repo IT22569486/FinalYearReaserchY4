@@ -1,4 +1,4 @@
-const { BusTripRecord } = require('../../models');
+const { BusTripRecord } = require('../../modelsN');
 const { seedCollection } = require('./helpers');
 
 const COLLECTION = 'bus_trip_records';

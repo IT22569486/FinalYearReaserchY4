@@ -3,6 +3,11 @@ import { StyleSheet, View, Text } from 'react-native';
 import MapView, { Marker, Polyline, Callout } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 
+const parseCoordinate = (value) => {
+  const parsed = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const MapViewComponent = ({
   buses,
   passengerLocation,
@@ -17,6 +22,7 @@ const MapViewComponent = ({
   selectedDestination,
   passengerArrivalTimes = {},
   passengerCounts = {},
+  autoFitRoute = true,
 }) => {
   const mapRef = useRef(null);
 
@@ -34,13 +40,13 @@ const MapViewComponent = ({
   });
 
   useEffect(() => {
-    if (mapRef.current && routePath && routePath.length > 0) {
+    if (autoFitRoute && mapRef.current && routePath && routePath.length > 0) {
       mapRef.current.fitToCoordinates(routePath, {
         edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
         animated: true,
       });
     }
-  }, [routePath]);
+  }, [routePath, autoFitRoute]);
 
   return (
     <MapView
@@ -49,6 +55,10 @@ const MapViewComponent = ({
       initialRegion={region}
       showsUserLocation={true}
       provider="google"
+      scrollEnabled={true}
+      zoomEnabled={true}
+      rotateEnabled={true}
+      pitchEnabled={true}
       // followsUserLocation={true}
     >
       {/* Draw the selected route path if it exists */}
@@ -61,70 +71,91 @@ const MapViewComponent = ({
       )}
 
       {passengerOriginStop && (
-        <Marker
-          coordinate={{
-            latitude: passengerOriginStop.lat,
-            longitude: passengerOriginStop.lng,
-          }}
-          title={`Origin: ${passengerOriginStop.stopName}`}
-          zIndex={120}
-        >
-          <View style={styles.originMarker}>
-            <Ionicons name="location" size={18} color="#FFFFFF" />
-          </View>
-          <Callout tooltip>
-            <View style={styles.stopCallout}>
-              <Text style={styles.stopName}>Origin: {passengerOriginStop.stopName}</Text>
-            </View>
-          </Callout>
-        </Marker>
+        (() => {
+          const originLat = parseCoordinate(passengerOriginStop.lat);
+          const originLng = parseCoordinate(passengerOriginStop.lng);
+          if (originLat == null || originLng == null) return null;
+          return (
+            <Marker
+              coordinate={{
+                latitude: originLat,
+                longitude: originLng,
+              }}
+              title={`Origin: ${passengerOriginStop.stopName}`}
+              zIndex={120}
+            >
+              <View style={styles.originMarker}>
+                <Ionicons name="location" size={18} color="#FFFFFF" />
+              </View>
+              <Callout tooltip>
+                <View style={styles.stopCallout}>
+                  <Text style={styles.stopName}>Origin: {passengerOriginStop.stopName}</Text>
+                </View>
+              </Callout>
+            </Marker>
+          );
+        })()
       )}
 
       {passengerDestinationStop && (
-        <Marker
-          coordinate={{
-            latitude: passengerDestinationStop.lat,
-            longitude: passengerDestinationStop.lng,
-          }}
-          title={`Destination: ${passengerDestinationStop.stopName}`}
-          zIndex={120}
-        >
-          <View style={styles.destinationMarker}>
-            <Ionicons name="flag" size={18} color="#FFFFFF" />
-          </View>
-          <Callout tooltip>
-            <View style={styles.stopCallout}>
-              <Text style={styles.stopName}>Destination: {passengerDestinationStop.stopName}</Text>
-            </View>
-          </Callout>
-        </Marker>
+        (() => {
+          const destinationLat = parseCoordinate(passengerDestinationStop.lat);
+          const destinationLng = parseCoordinate(passengerDestinationStop.lng);
+          if (destinationLat == null || destinationLng == null) return null;
+          return (
+            <Marker
+              coordinate={{
+                latitude: destinationLat,
+                longitude: destinationLng,
+              }}
+              title={`Destination: ${passengerDestinationStop.stopName}`}
+              zIndex={120}
+            >
+              <View style={styles.destinationMarker}>
+                <Ionicons name="flag" size={18} color="#FFFFFF" />
+              </View>
+              <Callout tooltip>
+                <View style={styles.stopCallout}>
+                  <Text style={styles.stopName}>Destination: {passengerDestinationStop.stopName}</Text>
+                </View>
+              </Callout>
+            </Marker>
+          );
+        })()
       )}
 
       {/* Render markers for each stop */}
       {stops && stops.map((stop, index) => (
-        <Marker
-          key={`stop-${index}`}
-          coordinate={{ latitude: stop.lat, longitude: stop.lng }}
-          title={stop.stopName}
-          zIndex={50}
-        >
-          <View style={styles.stopMarker}>
-            <View style={styles.stopMarkerDot} />
-          </View>
-          <Callout tooltip>
-            <View style={styles.stopCallout}>
-              <Text style={styles.stopName}>{stop.stopName}</Text>
-            </View>
-          </Callout>
-        </Marker>
+        (() => {
+          const stopLat = parseCoordinate(stop.lat);
+          const stopLng = parseCoordinate(stop.lng);
+          if (stopLat == null || stopLng == null) return null;
+          return (
+            <Marker
+              key={`stop-${index}`}
+              coordinate={{ latitude: stopLat, longitude: stopLng }}
+              title={stop.stopName}
+              zIndex={50}
+            >
+              <View style={styles.stopMarker}>
+                <View style={styles.stopMarkerDot} />
+              </View>
+              <Callout tooltip>
+                <View style={styles.stopCallout}>
+                  <Text style={styles.stopName}>{stop.stopName}</Text>
+                </View>
+              </Callout>
+            </Marker>
+          );
+        })()
       ))}
 
       {/* Render a marker for each bus */}
       {buses.map((bus) => {
         // Support both {lat,lng} and {latitude,longitude} location formats
         const loc = bus.location || {};
-        const lat = loc.latitude ?? loc.lat ?? bus.latitude ?? null;
-        const lng = loc.longitude ?? loc.lng ?? bus.longitude ?? null;
+        const lat = parseCoordinate(loc.latitude ?? loc.lat ?? bus.latitude);
+        const lng = parseCoordinate(loc.longitude ?? loc.lng ?? bus.longitude);
         if (lat == null || lng == null) return null; // skip buses with no location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';

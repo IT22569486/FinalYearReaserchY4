@@ -1,5 +1,5 @@
 const { db, admin } = require("../firebase");
-const { Notification } = require("../models");
+const { Notification } = require("../modelsN");
 const notificationsCollection = db.collection("notifications");
 
 // Create a new notification

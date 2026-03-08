@@ -280,35 +280,6 @@ const BusSafetyCard = ({ busId, route }) => {
         </View>
       )}
 
-      {/* Bus Details */}
-      <View style={styles.detailsSection}>
-        <View style={styles.detailRow}>
-          <View style={styles.detailItem}>
-            <Ionicons name="person-outline" size={20} color="#666" />
-            <View style={styles.detailText}>
-              <Text style={styles.detailLabel}>Driver</Text>
-              <Text style={styles.detailValue}>{busData?.driverName || 'N/A'}</Text>
-            </View>
-          </View>
-          <View style={styles.detailItem}>
-            <Ionicons name="speedometer-outline" size={20} color="#666" />
-            <View style={styles.detailText}>
-              <Text style={styles.detailLabel}>Speed</Text>
-              <Text style={styles.detailValue}>{busData?.currentSpeed || 0} km/h</Text>
-            </View>
-          </View>
-        </View>
-        <View style={styles.detailRow}>
-          <View style={styles.detailItem}>
-            <Ionicons name="time-outline" size={20} color="#666" />
-            <View style={styles.detailText}>
-              <Text style={styles.detailLabel}>ETA</Text>
-              <Text style={styles.detailValue}>{busData?.eta || 'Calculating...'}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
       {/* Critical Warning Banner */}
       {busData?.safetyScore < 40 && (
         <View style={styles.criticalBanner}>

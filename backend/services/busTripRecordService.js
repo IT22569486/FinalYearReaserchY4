@@ -1,5 +1,5 @@
 const { db } = require('../firebase');
-const { BusTripRecord } = require('../models');
+const { BusTripRecord } = require('../modelsN');
 
 const addBusTripRecord = async (record) => {
     try {
@@ -30,17 +30,53 @@ const getBusTripRecords = async () => {
 
 const getLastThreeRecordsOfTrip = async (tripId) => {
     try {
-        const snapshot = await db.collection('bus_trip_records')
-            .where('Trip_ID', '==', parseInt(tripId))
-            .orderBy('Stamp', 'desc')
-            .limit(3)
+        if (!tripId) return [];
+
+        const getSortableTime = (record) => {
+            const stamp = record?.Stamp;
+            if (stamp && typeof stamp.toDate === 'function') return stamp.toDate().getTime();
+            if (stamp && typeof stamp.seconds === 'number') return stamp.seconds * 1000;
+
+            const createdAt = record?.createdAt;
+            if (createdAt && typeof createdAt.toDate === 'function') return createdAt.toDate().getTime();
+            if (createdAt && typeof createdAt.seconds === 'number') return createdAt.seconds * 1000;
+
+            const parsedStamp = Date.parse(stamp || '');
+            if (!Number.isNaN(parsedStamp)) return parsedStamp;
+
+            const parsedCreatedAt = Date.parse(createdAt || '');
+            return Number.isNaN(parsedCreatedAt) ? 0 : parsedCreatedAt;
+        };
+
+        const normalizeAndLimit = (snapshot) => {
+            const all = [];
+            snapshot.forEach(doc => {
+                const record = BusTripRecord.fromFirestore(doc);
+                all.push({ id: doc.id, ...record.toFirestore() });
+            });
+
+            all.sort((a, b) => getSortableTime(b) - getSortableTime(a));
+            return all.slice(0, 3);
+        };
+
+        // Most records store Trip_ID as a string (e.g. "0001" or Firestore doc IDs).
+        const stringSnapshot = await db.collection('bus_trip_records')
+            .where('Trip_ID', '==', String(tripId))
             .get();
-        const records = [];
-        snapshot.forEach(doc => {
-            const record = BusTripRecord.fromFirestore(doc);
-            records.push({ id: doc.id, ...record.toFirestore() });
-        });
-        return records;
+
+        const records = normalizeAndLimit(stringSnapshot);
+
+        if (records.length > 0) return records;
+
+        // Backward-compatible fallback when Trip_ID was stored as a number.
+        const numericTripId = Number(tripId);
+        if (!Number.isFinite(numericTripId)) return [];
+
+        const numericSnapshot = await db.collection('bus_trip_records')
+            .where('Trip_ID', '==', numericTripId)
+            .get();
+
+        return normalizeAndLimit(numericSnapshot);
     } catch (error) {
         throw new Error('Error getting last three records of trip: ' + error.message);
     }

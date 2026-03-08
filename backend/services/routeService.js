@@ -1,6 +1,6 @@
 // services/routeService.js
 const { db, admin } = require("../firebase");
-const { Route } = require("../models");
+const { Route } = require("../modelsN");
 const routesCollection = db.collection("routes");
 
 // Helper: extract stops array from path

@@ -1,6 +1,6 @@
 const admin = require("firebase-admin");
 const db = admin.firestore();
-const { BusTrip } = require("../models");
+const { BusTrip } = require("../modelsN");
 
 const COLLECTION = "busTrips";
 const COUNTER_COLLECTION = "counters";

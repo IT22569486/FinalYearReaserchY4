@@ -1,5 +1,5 @@
 const { db } = require("../firebase");
-const { Trip } = require("../models");
+const { Trip } = require("../modelsN");
 const tripsCollection = db.collection("trips");
 
 const startTrip = async (passengerId, tripData) => {

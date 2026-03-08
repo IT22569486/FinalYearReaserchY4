@@ -1,7 +1,7 @@
 // models/userService.js
 const { db } = require("../firebase"); // Firestore instance
 const bcrypt = require("bcrypt");
-const { User } = require("../models");
+const { User } = require("../modelsN");
 const usersCollection = db.collection("users");
 
 // Add new user

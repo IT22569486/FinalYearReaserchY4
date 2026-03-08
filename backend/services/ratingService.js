@@ -1,5 +1,5 @@
 const { db } = require("../firebase");
-const { Rating } = require("../models");
+const { Rating } = require("../modelsN");
 const ratingsCollection = db.collection("ratings");
 
 // Submit a new rating

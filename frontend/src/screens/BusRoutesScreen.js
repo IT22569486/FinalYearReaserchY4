@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -30,6 +30,9 @@ const BusRoutesScreen = () => {
   const [busPassengerCounts, setBusPassengerCounts] = useState({});
   const navigation = useNavigation();
   const { refreshSession } = useSession();
+  const predictionInFlightRef = useRef(false);
+  const lastPredictionRunAtRef = useRef(0);
+  const predictionRequestIdRef = useRef(0);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -129,6 +132,10 @@ const BusRoutesScreen = () => {
   // Calculate arrival times and passenger counts for each bus
   useEffect(() => {
     const runPredictions = async () => {
+      const nowMs = Date.now();
+      if (predictionInFlightRef.current) return;
+      if (nowMs - lastPredictionRunAtRef.current < 4000) return;
+
       if (!selectedOrigin || !selectedDestination || filteredBuses.length === 0 || !selectedRouteStops.length) {
         console.log('Skipping predictions - missing requirements:', {
           hasOrigin: !!selectedOrigin,
@@ -141,25 +148,38 @@ const BusRoutesScreen = () => {
         return;
       }
 
+      const requestId = ++predictionRequestIdRef.current;
+      predictionInFlightRef.current = true;
+      lastPredictionRunAtRef.current = nowMs;
+
       console.log('Starting predictions for', filteredBuses.length, 'buses');
       
       // Use prediction service
-      const { arrivalTimes, passengerCounts } = await calculateBusPredictions(
-        filteredBuses,
-        selectedRouteStops,
-        selectedOrigin,
-        routes,
-        busTrips
-      );
-      
-      setBusArrivalTimes(arrivalTimes);
-      setBusPassengerCounts(passengerCounts);
-      
-      console.log('\nFinal predictions:', {
-        arrivalTimes: Object.keys(arrivalTimes).length,
-        passengerCounts: Object.keys(passengerCounts).length,
-        data: { arrivalTimes, passengerCounts }
-      });
+      try {
+        const { arrivalTimes, passengerCounts } = await calculateBusPredictions(
+          filteredBuses,
+          selectedRouteStops,
+          selectedOrigin,
+          routes,
+          busTrips
+        );
+
+        // Ignore stale async responses from older prediction requests.
+        if (requestId !== predictionRequestIdRef.current) return;
+
+        setBusArrivalTimes(arrivalTimes);
+        setBusPassengerCounts(passengerCounts);
+
+        console.log('\nFinal predictions:', {
+          arrivalTimes: Object.keys(arrivalTimes).length,
+          passengerCounts: Object.keys(passengerCounts).length,
+          data: { arrivalTimes, passengerCounts }
+        });
+      } finally {
+        if (requestId === predictionRequestIdRef.current) {
+          predictionInFlightRef.current = false;
+        }
+      }
     };
 
     // Calculate predictions immediately (no debounce)
@@ -266,7 +286,7 @@ const BusRoutesScreen = () => {
       }
     }
     
-    console.log('Final filteredBuses count:', buses.length);
+    console.log('Final filteredBuses count:', buses);
     return buses;
   }, [selectedRoute, selectedOrigin, selectedDestination, allBuses, busTrips, selectedRouteStops]);
 
@@ -338,8 +358,8 @@ const BusRoutesScreen = () => {
         passengerLocation={passengerLocation}
         onBusPress={handleBusPress}
         initialRegion={selectedRouteObject?{
-          latitude: selectedRouteObject.path[0].lat,
-          longitude: selectedRouteObject.path[0].lng,
+          latitude: selectedRouteObject?.path?.[0]?.lat ?? passengerLocation.latitude,
+          longitude: selectedRouteObject?.path?.[0]?.lng ?? passengerLocation.longitude,
           latitudeDelta: 0.0922,
           longitudeDelta: 0.0421,
         }:{

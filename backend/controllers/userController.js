@@ -1,6 +1,6 @@
 // controllers/userController.js
 // JWT Token-Based Authentication Only
-const userService = require("../services/userservice");
+const userService = require("../services/userService");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
