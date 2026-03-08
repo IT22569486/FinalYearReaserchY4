@@ -38,9 +38,28 @@ const HomeScreen = () => {
         setUserName(decodedToken.name || 'User');
       }
 
-      // Load last tracked bus for safety card
+      // Load last tracked bus and validate it against the current bus list
       const lastBusId = await AsyncStorage.getItem('lastTrackedBusId');
-      if (lastBusId) setActiveBusId(lastBusId);
+      try {
+        const res = await apiClient.get('/api/bus');
+        const buses = res.data || [];
+        setAllBuses(buses);
+        const storedIsValid = lastBusId && buses.some(
+          b => (b.busId || b.vehicle_id || b._id) === lastBusId
+        );
+        if (storedIsValid) {
+          setActiveBusId(lastBusId);
+        } else if (buses.length > 0) {
+          // Stored ID is stale or missing — auto-select the first available bus
+          const first = buses[0];
+          const firstId = first.busId || first.vehicle_id || first._id;
+          setActiveBusId(firstId);
+          await AsyncStorage.setItem('lastTrackedBusId', firstId);
+        }
+      } catch {
+        // API unreachable — fall back to whatever was stored
+        if (lastBusId) setActiveBusId(lastBusId);
+      }
     } catch (error) {
       console.error('Error in HomeScreen:', error);
     }
@@ -139,6 +158,19 @@ const HomeScreen = () => {
             <Text style={styles.secondaryCardTitle}>Timetables</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Live Tracking Card */}
+        <TouchableOpacity 
+          style={[styles.card, styles.liveTrackingCard]} 
+          onPress={() => navigation.navigate('LiveBusTracking')}
+        >
+          <Ionicons name="location" size={32} color="#10B981" />
+          <View style={styles.liveTrackingText}>
+            <Text style={styles.liveTrackingTitle}>Live Bus Tracking</Text>
+            <Text style={styles.liveTrackingSubtitle}>View all buses on map in real-time</Text>
+          </View>
+          <Ionicons name="chevron-forward-outline" size={24} color="#10B981" />
+        </TouchableOpacity>
 
         {/* Animated Carousel */}
         <View style={styles.carouselContainer}>
@@ -528,6 +560,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#007AFF',
+  },
+  // Live Tracking Card Styles
+  liveTrackingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  liveTrackingText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  liveTrackingTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#065F46',
+  },
+  liveTrackingSubtitle: {
+    fontSize: 13,
+    color: '#047857',
+    marginTop: 2,
   },
 });
 

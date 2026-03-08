@@ -39,7 +39,7 @@
       "enable_behavior_analysis": true,
       "enable_adaptive_processing": true,
       "show_gui": true,
-      "video_source": "http://10.255.184.232:8080/video",
+      "video_source": "http://192.168.1.16:8080/video",
       "yolo_imgsz": 384,
       "depth_input_size": [256, 256]
     },

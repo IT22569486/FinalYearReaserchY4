@@ -130,15 +130,28 @@ const MapViewComponent = ({
         const routeName = route ? route.name : 'Unknown Route';
         const arrivalTime = passengerArrivalTimes[bus.busId];
         const passengerCount = passengerCounts[bus.busId];
+        const isLive = !!bus.isLive;
         
         return (
           <Marker
-            key={bus.busId}
+            key={bus.busId || bus.bus_id}
             coordinate={{ latitude: lat, longitude: lng }}
-            title={`Bus ${bus.busId}`}
+            title={`Bus ${bus.busId || bus.bus_id}`}
             zIndex={150}
           >
-            <Ionicons name="bus" size={30} color="#007AFF" />
+            {/* Bus icon with optional LIVE badge */}
+            <View style={styles.busMarkerContainer}>
+              <Ionicons
+                name="bus"
+                size={30}
+                color={isLive ? '#00C853' : '#007AFF'}
+              />
+              {isLive && (
+                <View style={styles.liveBadge}>
+                  <Text style={styles.liveBadgeText}>LIVE</Text>
+                </View>
+              )}
+            </View>
             <Callout 
               tooltip
               onPress={() => {
@@ -148,10 +161,27 @@ const MapViewComponent = ({
               }}
             >
               <View style={styles.calloutView}>
-                <Text style={styles.calloutTitle}>{routeName}</Text>
-                <Text style={styles.calloutBusId}>{`Bus ${bus.busId}`}</Text>
-                <Text style={styles.calloutText}>{`Status: ${bus.status}`}</Text>
-                <Text style={styles.calloutText}>{`Current Load: ${bus.occupancy}/${bus.capacity}`}</Text>
+                <View style={styles.calloutHeader}>
+                  <Text style={styles.calloutTitle}>{routeName}</Text>
+                  {isLive && (
+                    <View style={styles.liveCalloutBadge}>
+                      <Text style={styles.liveCalloutText}>● LIVE</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.calloutBusId}>{`Bus ${bus.busId || bus.bus_id}`}</Text>
+                <Text style={styles.calloutText}>{`Status: ${bus.status || 'online'}`}</Text>
+                {isLive ? (
+                  <>
+                    <Text style={styles.calloutText}>{`Speed: ${Math.round(bus.speed || 0)} km/h`}</Text>
+                    <Text style={styles.calloutText}>{`Passengers: ${bus.passenger_count ?? bus.occupancy ?? 0}`}</Text>
+                    {bus.total_weight > 0 && (
+                      <Text style={styles.calloutText}>{`Weight: ${Math.round(bus.total_weight)} kg`}</Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.calloutText}>{`Current Load: ${bus.occupancy}/${bus.capacity}`}</Text>
+                )}
                 {passengerCount !== undefined && (
                   <Text style={styles.calloutText}>{`Est. Passengers at Origin: ${passengerCount}`}</Text>
                 )}
@@ -252,6 +282,41 @@ const styles = StyleSheet.create({
   selectButtonText: {
     color: 'white',
     fontSize: 14,
+    fontWeight: 'bold',
+  },
+  busMarkerContainer: {
+    alignItems: 'center',
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    backgroundColor: '#00C853',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  liveBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  calloutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  liveCalloutBadge: {
+    backgroundColor: '#00C853',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  liveCalloutText: {
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold',
   },
 });
