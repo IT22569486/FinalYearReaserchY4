@@ -10,6 +10,8 @@
   - Publishes: bus/{BUS_ID}/telemetry (GPS, speed, passengers, weight)
   - Publishes: bus/{BUS_ID}/stop-data (when bus leaves a stop)
   - Subscribes: bus/{BUS_ID}/safe-speed (receives safe speed predictions)
+  - Subscribes: bus/{BUS_ID}/context-aware (receives road monitoring predictions)
+  - Subscribes: bus/{BUS_ID}/driver-monitor (receives driver monitoring predictions)
 */
 
 #include <WiFi.h>
@@ -46,6 +48,8 @@ PubSubClient client(espClient);
 String TELEMETRY_TOPIC;
 String SAFE_SPEED_TOPIC;
 String STOP_DATA_TOPIC;
+String CONTEXT_AWARE_TOPIC;
+String DRIVER_MONITOR_TOPIC;
 
 //////////////////////////////////////
 // ROUTE STOPS - Test Data (Route 177)
@@ -149,6 +153,24 @@ String locationName = "Unknown";
 bool isOverSpeed = false;
 
 //////////////////////////////////////
+// CONTEXT-AWARE PREDICTIONS (from Pi)
+//////////////////////////////////////
+
+String camWarning = "CLEAR";
+String camProximity = "Clear";
+bool camLaneWarning = false;
+bool camWrongSide = false;
+
+//////////////////////////////////////
+// DRIVER MONITOR PREDICTIONS (from Pi)
+//////////////////////////////////////
+
+String dmsState = "INIT";
+String dmsSeverity = "info";
+bool dmsPhone = false;
+bool dmsSeatbelt = true;
+
+//////////////////////////////////////
 // TIMING
 //////////////////////////////////////
 
@@ -184,6 +206,8 @@ void loadConfig() {
   TELEMETRY_TOPIC = "bus/" + BUS_ID + "/telemetry";
   SAFE_SPEED_TOPIC = "bus/" + BUS_ID + "/safe-speed";
   STOP_DATA_TOPIC = "bus/" + BUS_ID + "/stop-data";
+  CONTEXT_AWARE_TOPIC = "bus/" + BUS_ID + "/context-aware";
+  DRIVER_MONITOR_TOPIC = "bus/" + BUS_ID + "/driver-monitor";
 
   Serial.println("Config loaded:");
   Serial.println("  Bus ID: " + BUS_ID);
@@ -191,6 +215,8 @@ void loadConfig() {
   Serial.println("  Telemetry Topic: " + TELEMETRY_TOPIC);
   Serial.println("  Safe Speed Topic: " + SAFE_SPEED_TOPIC);
   Serial.println("  Stop Data Topic: " + STOP_DATA_TOPIC);
+  Serial.println("  Context-Aware Topic: " + CONTEXT_AWARE_TOPIC);
+  Serial.println("  Driver Monitor Topic: " + DRIVER_MONITOR_TOPIC);
 }
 
 void saveConfig(String busId, String routeId) {
@@ -205,6 +231,8 @@ void saveConfig(String busId, String routeId) {
   TELEMETRY_TOPIC = "bus/" + BUS_ID + "/telemetry";
   SAFE_SPEED_TOPIC = "bus/" + BUS_ID + "/safe-speed";
   STOP_DATA_TOPIC = "bus/" + BUS_ID + "/stop-data";
+  CONTEXT_AWARE_TOPIC = "bus/" + BUS_ID + "/context-aware";
+  DRIVER_MONITOR_TOPIC = "bus/" + BUS_ID + "/driver-monitor";
 }
 
 //////////////////////////////////////
@@ -257,7 +285,11 @@ void connectMQTT() {
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       client.subscribe(SAFE_SPEED_TOPIC.c_str());
+      client.subscribe(CONTEXT_AWARE_TOPIC.c_str());
+      client.subscribe(DRIVER_MONITOR_TOPIC.c_str());
       Serial.println("Subscribed to: " + SAFE_SPEED_TOPIC);
+      Serial.println("Subscribed to: " + CONTEXT_AWARE_TOPIC);
+      Serial.println("Subscribed to: " + DRIVER_MONITOR_TOPIC);
     } else {
       Serial.print("failed, rc=");
       Serial.println(client.state());
@@ -283,20 +315,65 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  if (doc.containsKey("safe_speed")) {
-    float newSpeed = doc["safe_speed"].as<float>();
-    safeSpeed = newSpeed;
-    Serial.print(">>> SAFE SPEED UPDATED: ");
-    Serial.print(safeSpeed, 1);
-    Serial.println(" km/h");
-  }
-  if (doc.containsKey("location_name")) {
-    locationName = doc["location_name"].as<String>();
-    Serial.print(">>> LOCATION: ");
-    Serial.println(locationName);
+  String topicStr = String(topic);
+
+  // Handle safe-speed messages
+  if (topicStr.endsWith("/safe-speed")) {
+    if (doc.containsKey("safe_speed")) {
+      float newSpeed = doc["safe_speed"].as<float>();
+      safeSpeed = newSpeed;
+      Serial.print(">>> SAFE SPEED UPDATED: ");
+      Serial.print(safeSpeed, 1);
+      Serial.println(" km/h");
+    }
+    if (doc.containsKey("location_name")) {
+      locationName = doc["location_name"].as<String>();
+      Serial.print(">>> LOCATION: ");
+      Serial.println(locationName);
+    }
+    isOverSpeed = (speedKmh > safeSpeed);
   }
 
-  isOverSpeed = (speedKmh > safeSpeed);
+  // Handle context-aware predictions
+  if (topicStr.endsWith("/context-aware")) {
+    if (doc.containsKey("warning")) {
+      camWarning = doc["warning"].as<String>();
+    }
+    if (doc.containsKey("proximity")) {
+      camProximity = doc["proximity"].as<String>();
+    }
+    if (doc.containsKey("lane_warning")) {
+      camLaneWarning = doc["lane_warning"].as<bool>();
+    }
+    if (doc.containsKey("wrong_side")) {
+      camWrongSide = doc["wrong_side"].as<bool>();
+    }
+    Serial.print(">>> CAM: ");
+    Serial.print(camWarning);
+    Serial.print(" | Proximity: ");
+    Serial.println(camProximity);
+  }
+
+  // Handle driver monitor predictions
+  if (topicStr.endsWith("/driver-monitor")) {
+    if (doc.containsKey("state")) {
+      dmsState = doc["state"].as<String>();
+    }
+    if (doc.containsKey("severity")) {
+      dmsSeverity = doc["severity"].as<String>();
+    }
+    if (doc.containsKey("phone")) {
+      dmsPhone = doc["phone"].as<bool>();
+    }
+    if (doc.containsKey("seatbelt")) {
+      dmsSeatbelt = doc["seatbelt"].as<bool>();
+    }
+    Serial.print(">>> DMS: ");
+    Serial.print(dmsState);
+    Serial.print(" (");
+    Serial.print(dmsSeverity);
+    Serial.println(")");
+  }
 }
 
 //////////////////////////////////////
@@ -444,58 +521,116 @@ void updateDisplay() {
 
   tft.drawLine(0, 125, 320, 125, ILI9341_DARKGREY);
 
-  // Current stop name
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(20, 132);
-  tft.print("STOP:");
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.setCursor(20, 152);
-  tft.print(ROUTE_STOPS[currentStopIndex].name);
-  tft.setCursor(20, 162);
-  tft.print("(");
-  tft.print(latitude, 6);
-  tft.print(", ");
-  tft.print(longitude, 6);
-  tft.print(")");
+  // ---- BOTTOM: Two prediction panels ----
 
-  // Passengers
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(20, 178);
-  tft.print("Passengers: ");
+  // LEFT PANEL: Context-Aware Monitoring (Road)
+  tft.setTextSize(1);
   tft.setTextColor(ILI9341_CYAN);
-  tft.print(passengerCount);
+  tft.setCursor(5, 130);
+  tft.print("ROAD MONITOR");
 
-  tft.setTextColor(ILI9341_GREEN);
-  tft.print(" +");
-  tft.print(passengerIn);
-
-  tft.setTextColor(ILI9341_RED);
-  tft.print(" -");
-  tft.print(passengerOut);
-
-  // Weight
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setCursor(20, 200);
-  tft.print("Weight: ");
-  tft.setTextColor(ILI9341_MAGENTA);
-  tft.print(busWeight, 1);
-  tft.print(" kg");
-
-  // Bus status
-  tft.setTextSize(1);
-  tft.setCursor(20, 225);
-  if (busIsStopped) {
+  // Warning state
+  tft.setTextSize(2);
+  tft.setCursor(5, 143);
+  if (camWarning == "CLEAR") {
+    tft.setTextColor(ILI9341_GREEN);
+  } else if (camWarning == "OBJ CLOSE") {
+    tft.setTextColor(ILI9341_YELLOW);
+  } else {
     tft.setTextColor(ILI9341_RED);
-    tft.print("BUS STOPPED - Collecting data...");
+  }
+  tft.print(camWarning);
+
+  // Proximity
+  tft.setTextSize(1);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(5, 165);
+  tft.print("Obj: ");
+  if (camProximity == "Very Close" || camProximity == "Close") {
+    tft.setTextColor(ILI9341_RED);
+  } else if (camProximity == "Near") {
+    tft.setTextColor(ILI9341_YELLOW);
   } else {
     tft.setTextColor(ILI9341_GREEN);
-    tft.print("BUS MOVING - Speed: ");
-    tft.print(speedKmh, 1);
-    tft.print(" km/h");
   }
+  tft.print(camProximity);
+
+  // Lane/Wrong side indicators
+  tft.setCursor(5, 178);
+  if (camLaneWarning) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print("LANE!");
+  }
+  if (camWrongSide) {
+    tft.setTextColor(ILI9341_RED);
+    tft.setCursor(5, 190);
+    tft.print("WRONG SIDE!");
+  }
+
+  // Divider between panels
+  tft.drawLine(160, 125, 160, 240, ILI9341_DARKGREY);
+
+  // RIGHT PANEL: Driver Monitoring
+  tft.setTextSize(1);
+  tft.setTextColor(ILI9341_CYAN);
+  tft.setCursor(165, 130);
+  tft.print("DRIVER MONITOR");
+
+  // DMS state
+  tft.setTextSize(2);
+  tft.setCursor(165, 143);
+  if (dmsSeverity == "info") {
+    tft.setTextColor(ILI9341_GREEN);
+  } else if (dmsSeverity == "warning") {
+    tft.setTextColor(ILI9341_YELLOW);
+  } else {
+    tft.setTextColor(ILI9341_RED);
+  }
+  // Truncate long states
+  String dmsDisplay = dmsState;
+  if (dmsDisplay.length() > 10) {
+    dmsDisplay = dmsDisplay.substring(0, 10);
+  }
+  tft.print(dmsDisplay);
+
+  // Phone & Seatbelt status
+  tft.setTextSize(1);
+  tft.setCursor(165, 165);
+  tft.print("Phone: ");
+  if (dmsPhone) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print("YES!");
+  } else {
+    tft.setTextColor(ILI9341_GREEN);
+    tft.print("No");
+  }
+
+  tft.setCursor(165, 178);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.print("Belt: ");
+  if (!dmsSeatbelt) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print("MISSING!");
+  } else {
+    tft.setTextColor(ILI9341_GREEN);
+    tft.print("OK");
+  }
+
+  // Bus status at very bottom
+  tft.setTextSize(1);
+  tft.setCursor(10, 225);
+  if (busIsStopped) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print("BUS STOPPED");
+  } else {
+    tft.setTextColor(ILI9341_GREEN);
+    tft.print("MOVING ");
+    tft.print(speedKmh, 0);
+    tft.print("km/h");
+  }
+  tft.setTextColor(ILI9341_WHITE);
+  tft.print("  P:");
+  tft.print(passengerCount);
 }
 
 //////////////////////////////////////
@@ -643,7 +778,7 @@ void setup() {
 
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(mqttCallback);
-  client.setBufferSize(512);
+  client.setBufferSize(1024);
 
   setupWebServer();
   connectMQTT();

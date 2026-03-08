@@ -431,6 +431,22 @@ class DriverMonitor:
         except Exception as e:
             print(f"[DMS] Publish error: {e}")
 
+    def _publish_to_esp32(self, state, severity, details=None):
+        """Publish DMS prediction to ESP32 display via bus/{vehicle_id}/driver-monitor."""
+        if not self.mqtt_client:
+            return
+        topic = f"bus/{_cfg.vehicle_id}/driver-monitor"
+        payload = {
+            'state': state,
+            'severity': severity,
+            'phone': self.phone_detected,
+            'seatbelt': self.seatbelt_detected
+        }
+        try:
+            self.mqtt_client.publish(topic, json.dumps(payload), qos=0)
+        except Exception:
+            pass
+
     def _publish_state(self, state, details=None):
         """Publish current DMS state as telemetry."""
         now = time.time()
@@ -734,6 +750,9 @@ class DriverMonitor:
 
         # Publish telemetry every interval
         self._publish_state(state, details)
+
+        # Publish to ESP32 display
+        self._publish_to_esp32(state, severity, details)
 
         # Fire events for serious states
         if severity in ("critical", "danger"):

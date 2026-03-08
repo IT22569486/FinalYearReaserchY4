@@ -11,6 +11,7 @@ Optimizations for Raspberry Pi:
 """
 
 import sys
+import os
 import time
 from pathlib import Path
 
@@ -105,6 +106,82 @@ try:
 except ImportError:
     print("WARNING: Adaptive processor not available")
     ADAPTIVE_PROCESSOR_AVAILABLE = False
+
+# MQTT for ESP32 communication (publish predictions + receive real-time speed)
+try:
+    import paho.mqtt.client as mqtt
+    import json
+    MQTT_AVAILABLE = True
+except ImportError:
+    print("WARNING: paho-mqtt not available. ESP32 prediction display disabled.")
+    MQTT_AVAILABLE = False
+
+# ESP32 MQTT publish state
+_esp32_mqtt_client = None
+_esp32_last_publish_time = 0
+_ESP32_PUBLISH_INTERVAL = 2  # seconds
+_live_speed_kmh = VEHICLE_SPEED_KMH  # updated from ESP32 telemetry
+
+
+def _setup_esp32_mqtt():
+    """Set up MQTT client for ESP32 communication."""
+    global _esp32_mqtt_client
+    if not MQTT_AVAILABLE:
+        return
+    try:
+        client_id = f"{_cfg.device_key}-CAM-{os.getpid()}"
+        _esp32_mqtt_client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
+            client_id=client_id
+        )
+        username = _cfg.mqtt_username
+        password = _cfg.mqtt_password
+        if username:
+            _esp32_mqtt_client.username_pw_set(username, password)
+        _esp32_mqtt_client.on_message = _esp32_on_message
+        _esp32_mqtt_client.connect(_cfg.mqtt_broker, _cfg.mqtt_port, keepalive=60)
+        # Subscribe to ESP32 telemetry for real-time speed
+        telemetry_topic = f"bus/{_cfg.vehicle_id}/telemetry"
+        _esp32_mqtt_client.subscribe(telemetry_topic, 0)
+        _esp32_mqtt_client.loop_start()
+        print(f"[CAM] MQTT connected to {_cfg.mqtt_broker}:{_cfg.mqtt_port}")
+        print(f"[CAM] Subscribed to {telemetry_topic} for real-time speed")
+    except Exception as e:
+        print(f"[CAM] MQTT connect error: {e}")
+        _esp32_mqtt_client = None
+
+
+def _esp32_on_message(client, userdata, msg):
+    """Handle ESP32 telemetry to get real-time speed."""
+    global _live_speed_kmh
+    try:
+        payload = json.loads(msg.payload.decode('utf-8'))
+        if 'speed' in payload:
+            _live_speed_kmh = float(payload['speed'])
+    except Exception:
+        pass
+
+
+def _publish_to_esp32(warning_state, closest_proximity, lane_warning_active, wrong_side_active):
+    """Publish context-aware predictions to ESP32 display."""
+    global _esp32_last_publish_time
+    if not _esp32_mqtt_client:
+        return
+    now = time.time()
+    if now - _esp32_last_publish_time < _ESP32_PUBLISH_INTERVAL:
+        return
+    _esp32_last_publish_time = now
+    topic = f"bus/{_cfg.vehicle_id}/context-aware"
+    payload = {
+        'warning': warning_state,
+        'proximity': closest_proximity,
+        'lane_warning': lane_warning_active,
+        'wrong_side': wrong_side_active
+    }
+    try:
+        _esp32_mqtt_client.publish(topic, json.dumps(payload), qos=0)
+    except Exception:
+        pass
 
 
 def get_palette(n):
@@ -368,6 +445,9 @@ def main():
     WRONG_SIDE_DURATION_THRESHOLD = 3.0
     wrong_side_warning_active = False
     
+    # ---- MQTT for ESP32 predictions display ----
+    _setup_esp32_mqtt()
+
     # ---- Driver Behavior Analyzer ----
     behavior_analyzer = None
     vehicle_speed = VEHICLE_SPEED_KMH
@@ -976,6 +1056,30 @@ def main():
                 # Draw behavior overlay
                 annotated = behavior_analyzer.draw_overlay(annotated, lane_polygon)
             
+            # Update speed from ESP32 telemetry and publish predictions to ESP32
+            if behavior_analyzer is not None and _live_speed_kmh != vehicle_speed:
+                vehicle_speed = _live_speed_kmh
+                behavior_analyzer.set_speed(vehicle_speed)
+            
+            # Determine closest object proximity for ESP32 display
+            closest_prox = "Clear"
+            prox_priority = {"Very Close": 5, "Close": 4, "Near": 3, "Medium": 2, "Far": 1}
+            for obj in detected_objects:
+                p = obj.get('proximity', 'Far')
+                if prox_priority.get(p, 0) > prox_priority.get(closest_prox, 0):
+                    closest_prox = p
+            
+            # Build warning state for ESP32
+            cam_warning = "CLEAR"
+            if wrong_side_warning_active:
+                cam_warning = "WRONG SIDE"
+            elif lane_warning:
+                cam_warning = "LANE DEPART"
+            elif closest_prox in ("Very Close", "Close"):
+                cam_warning = "OBJ CLOSE"
+            
+            _publish_to_esp32(cam_warning, closest_prox, lane_warning, wrong_side_warning_active)
+            
             if depth_colored is not None:
                 cv2.putText(depth_colored, "DEPTH MAP", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -1035,6 +1139,11 @@ def main():
         if health_monitor:
             health_monitor.update_detection_status(camera=False)
             health_monitor.stop()
+        
+        # Stop ESP32 MQTT client
+        if _esp32_mqtt_client:
+            _esp32_mqtt_client.loop_stop()
+            _esp32_mqtt_client.disconnect()
     
     elapsed = time.time() - start_time
     print(f"\n{'='*60}")
