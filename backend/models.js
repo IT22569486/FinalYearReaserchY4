@@ -214,4 +214,16 @@ class Notification {
   }
 }
 
-module.exports = { User, Bus, Trip, Route, Rating, Notification };
+class BusTrip {
+  constructor(data = {}) { this._data = { ...data }; }
+  toFirestore() { return { ...this._data }; }
+  static fromFirestore(doc) { return new BusTrip(doc.data()); }
+}
+
+class BusTripRecord {
+  constructor(data = {}) { this._data = { ...data }; }
+  toFirestore() { return { ...this._data }; }
+  static fromFirestore(doc) { return new BusTripRecord(doc.data()); }
+}
+
+module.exports = { User, Bus, Trip, Route, Rating, Notification, BusTrip, BusTripRecord };
