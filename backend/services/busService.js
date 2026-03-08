@@ -37,14 +37,25 @@ async function getAllBuses() {
 }
 
 async function getBusByBusId(busId) {
-  // Doc ID in fleet_buses IS the vehicle_id
+  // Try doc by ID first
   const docRef = await busesCollection.doc(busId).get();
-  if (docRef.exists) return normalizeBus(docRef.id, docRef.data());
+  if (docRef.exists) {
+    const bus = Bus.fromFirestore(docRef);
+    return { id: docRef.id, ...bus.toFirestore() };
+  }
+  // Fallback: search by busId field
+  let snapshot = await busesCollection.where("busId", "==", busId).limit(1).get();
+  if (!snapshot.empty) {
+    const bus = Bus.fromFirestore(snapshot.docs[0]);
+    return { id: snapshot.docs[0].id, ...bus.toFirestore() };
+  }
   // Fallback: search by vehicle_id field
-  const snapshot = await busesCollection.where("vehicle_id", "==", busId).limit(1).get();
-  if (snapshot.empty) return null;
-  const bus = Bus.fromFirestore(snapshot.docs[0]);
-  return { id: snapshot.docs[0].id, ...bus.toFirestore() };
+  snapshot = await busesCollection.where("vehicle_id", "==", busId).limit(1).get();
+  if (!snapshot.empty) {
+    const bus = Bus.fromFirestore(snapshot.docs[0]);
+    return { id: snapshot.docs[0].id, ...bus.toFirestore() };
+  }
+  return null;
 }
 
 async function createBus(busData) {

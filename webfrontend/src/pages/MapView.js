@@ -221,21 +221,30 @@ function MapView() {
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {/* Route Name */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <Navigation size={14} color="#9ca3af" />
-                          <span style={{ color: 'var(--gray-200)' }}>{bus.location_name || 'Unknown'}</span>
+                          <span style={{ color: 'var(--gray-200)' }}>
+                            {bus.route_name || bus.location_name || 'Unknown Route'}
+                          </span>
                         </div>
 
+                        {/* Current Speed */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Gauge size={14} color="#db046c" />
+                          <Gauge size={14} color="#3b82f6" />
                           <span style={{ color: 'var(--gray-200)' }}>
-                            <strong>{bus.safe_speed || 0}</strong> km/h safe speed
+                            <strong>{bus.speed || 0}</strong> km/h
+                            {bus.safe_speed && <span style={{ marginLeft: '0.25rem', color: 'var(--gray-500)' }}>
+                              (limit: {bus.safe_speed})
+                            </span>}
                           </span>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <Users size={14} color="#f59e0b" />
-                          <span style={{ color: 'var(--gray-200)' }}>{bus.passenger_count || 0} passengers</span>
+                          <span style={{ color: 'var(--gray-200)' }}>
+                            {bus.passenger_count || bus.occupancy || 0} passengers
+                          </span>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -255,7 +264,13 @@ function MapView() {
                         fontSize: '0.75rem',
                         color: 'var(--gray-500)'
                       }}>
-                        {bus.direction?.replace(/_/g, ' \u2192 ')}
+                        {bus.route_id && <div>Route ID: {bus.route_id}</div>}
+                        {bus.direction && <div>{bus.direction?.replace(/_/g, ' → ')}</div>}
+                        {bus.last_updated && (
+                          <div style={{ marginTop: '0.25rem' }}>
+                            Updated: {new Date(bus.last_updated).toLocaleTimeString()}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Popup>

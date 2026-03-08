@@ -31,6 +31,29 @@ class SocketService {
       this.notifyListeners('bus_update', data);
     });
 
+    // Real-time GPS location updates from MQTT
+    this.socket.on('bus_location_update', (data) => {
+      this.notifyListeners('bus_location_update', data);
+      // Also notify bus_update for backward compatibility
+      this.notifyListeners('bus_update', data);
+    });
+
+    // Legacy event name support
+    this.socket.on('busLocationUpdate', (data) => {
+      this.notifyListeners('bus_location_update', data);
+      this.notifyListeners('bus_update', data);
+    });
+
+    // Passenger count updates
+    this.socket.on('passenger_update', (data) => {
+      this.notifyListeners('passenger_update', data);
+    });
+
+    // Bus status changes
+    this.socket.on('bus_status', (data) => {
+      this.notifyListeners('bus_status', data);
+    });
+
     this.socket.on('safeSpeedUpdate', (data) => {
       this.notifyListeners('safeSpeedUpdate', data);
     });

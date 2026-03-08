@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import io from 'socket.io-client';
+import socketService from '../services/socketService';
 import apiClient from '../api/axiosConfig';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapViewComponent from '../components/MapViewComponent';
 import BusSafetyCard from '../components/BusSafetyCard';
-import { BACKEND_URL, ML_BACKEND_URL } from '../config';
+import { ML_BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
 import axios from 'axios';
@@ -25,7 +25,7 @@ import {
   predictSegmentETA 
 } from '../services/predictionService';
 
-const socket = io(BACKEND_URL);
+// socketService singleton handles connection
 
 const parseCoordinate = (value) => {
   const parsed = typeof value === 'string' ? parseFloat(value) : value;
@@ -148,17 +148,21 @@ const CurrentTripScreen = ({ route }) => {
     fetchInitialData();
 
     const handleUpdate = (updatedBus) => {
-      if (updatedBus.busId === busId) {
-        // Merge the update with existing bus data to preserve all fields
+      const incomingId = updatedBus.busId || updatedBus.bus_id;
+      if (incomingId === busId) {
         setBus(prev => normalizeBusPayload(prev ? { ...prev, ...updatedBus } : updatedBus));
-        // Add to history for sequence-based prediction
-        // setTripHistory(prevHistory => [...prevHistory, updatedBus]);
       }
     };
-    
-    socket.on('busLocationUpdate', handleUpdate);
 
-    return () => socket.off('busLocationUpdate', handleUpdate);
+    // Listen for ESP32 telemetry events (bus_location_update) and legacy events
+    socketService.connect();
+    const unsubLive = socketService.subscribe('bus_location_update', handleUpdate);
+    const unsubLegacy = socketService.subscribe('busLocationUpdate', handleUpdate);
+
+    return () => {
+      unsubLive();
+      unsubLegacy();
+    };
   }, [busId, navigation]);
 
   // Effect to set passenger location to bus location when bus data is available

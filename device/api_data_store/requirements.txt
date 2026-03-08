@@ -1,0 +1,28 @@
+# Python Backend - MQTT to Firebase Bridge
+# Requirements
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# MQTT Client
+paho-mqtt==2.0.0
+
+# Firebase Admin SDK
+firebase-admin==6.4.0
+
+# Socket.IO
+python-socketio==5.10.0
+
+# Async support
+aiohttp>=3.10.0
+python-multipart==0.0.6
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Date/Time handling
+python-dateutil==2.8.2
+
+# CORS
+starlette==0.35.1

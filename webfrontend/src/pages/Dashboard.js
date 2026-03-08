@@ -271,20 +271,20 @@ function Dashboard() {
                   <span style={{
                     fontSize: '13px',
                     fontWeight: 600,
-                    color: bus.status === 'Online' ? '#eab308' : '#6b7280',
-                    background: bus.status === 'Online' ? '#fef9c3' : '#f3f4f6',
+                    color: bus.status === 'online' ? '#eab308' : '#6b7280',
+                    background: bus.status === 'online' ? '#fef9c3' : '#f3f4f6',
                     padding: '4px 12px',
                     borderRadius: '16px'
                   }}>
-                    {bus.status === 'Online' ? 'In Transit' : 'Offline'}
+                    {bus.status === 'online' ? 'In Transit' : 'Offline'}
                   </span>
                 </div>
 
                 {/* Route progress visual */}
                 <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', position: 'relative' }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${themeColor}`, background: '#fff', zIndex: 2 }}></div>
-                  <div style={{ flex: 1, height: '2px', background: bus.status === 'Online' ? themeColor : '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${bus.status === 'Online' ? themeColor : '#d1d5db'}`, background: '#fff', zIndex: 2 }}></div>
+                  <div style={{ flex: 1, height: '2px', background: bus.status === 'online' ? themeColor : '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${bus.status === 'online' ? themeColor : '#d1d5db'}`, background: '#fff', zIndex: 2 }}></div>
                   <div style={{ flex: 1, height: '2px', background: '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: '3px solid #d1d5db', background: '#fff', zIndex: 2 }}></div>
                 </div>

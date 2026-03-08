@@ -53,7 +53,8 @@ export function useBuses(refreshInterval = 5000) {
     
     // Subscribe to real-time updates
     socketService.connect();
-    const unsubscribe = socketService.subscribe('bus_update', (updatedBus) => {
+
+    const unsubscribeBusUpdate = socketService.subscribe('bus_update', (updatedBus) => {
       setBuses(prev => {
         const index = prev.findIndex(b => b.vehicle_id === updatedBus.vehicle_id);
         if (index >= 0) {
@@ -65,9 +66,63 @@ export function useBuses(refreshInterval = 5000) {
       });
     });
 
+    // Subscribe to bus_location_update (from ESP32 via MQTT)
+    const unsubscribeLocation = socketService.subscribe('bus_location_update', (data) => {
+      setBuses(prev => {
+        const vid = data.bus_id || data.vehicle_id;
+        const index = prev.findIndex(b => b.vehicle_id === vid || b.bus_id === vid);
+        if (index >= 0) {
+          const newBuses = [...prev];
+          newBuses[index] = {
+            ...newBuses[index],
+            latitude: data.latitude,
+            longitude: data.longitude,
+            speed: data.speed,
+            safe_speed: newBuses[index].safe_speed || data.speed,
+            route_id: data.route_id || newBuses[index].route_id,
+            status: 'online',
+            last_update: data.timestamp || new Date().toISOString()
+          };
+          return newBuses;
+        }
+        // New bus — add it
+        return [...prev, {
+          vehicle_id: vid,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          speed: data.speed,
+          safe_speed: data.speed,
+          route_id: data.route_id || '',
+          route_name: data.route_name || '',
+          status: 'online',
+          last_update: data.timestamp || new Date().toISOString()
+        }];
+      });
+    });
+
+    // Subscribe to passenger updates
+    const unsubscribePassenger = socketService.subscribe('passenger_update', (data) => {
+      setBuses(prev => {
+        const vid = data.bus_id;
+        const index = prev.findIndex(b => b.vehicle_id === vid || b.bus_id === vid);
+        if (index >= 0) {
+          const newBuses = [...prev];
+          newBuses[index] = {
+            ...newBuses[index],
+            passenger_count: data.total_passenger_count,
+            passenger_load_kg: data.total_weight
+          };
+          return newBuses;
+        }
+        return prev;
+      });
+    });
+
     return () => {
       clearInterval(interval);
-      unsubscribe();
+      unsubscribeBusUpdate();
+      unsubscribeLocation();
+      unsubscribePassenger();
     };
   }, [fetchData, refreshInterval]);
 
@@ -152,7 +207,71 @@ export function useMapData(refreshInterval = 5000) {
     
     // Subscribe to real-time updates
     socketService.connect();
-    const unsubscribe = socketService.subscribe('bus_update', (updatedBus) => {
+    
+    // Subscribe to bus_location_update events (from MQTT GPS data)
+    const unsubscribeLocation = socketService.subscribe('bus_location_update', (updatedBus) => {
+      setMapData(prev => {
+        // Find bus by bus_id or vehicle_id
+        const index = prev.findIndex(b => 
+          b.vehicle_id === updatedBus.bus_id || 
+          b.bus_id === updatedBus.bus_id ||
+          b.vehicle_id === updatedBus.vehicle_id
+        );
+        
+        if (index >= 0) {
+          const newData = [...prev];
+          newData[index] = { 
+            ...newData[index], 
+            latitude: updatedBus.latitude,
+            longitude: updatedBus.longitude,
+            location: updatedBus.location || { lat: updatedBus.latitude, lng: updatedBus.longitude },
+            speed: updatedBus.speed,
+            route_name: updatedBus.route_name,
+            route_id: updatedBus.route_id,
+            status: 'online',
+            last_updated: updatedBus.timestamp
+          };
+          return newData;
+        }
+        // Add new bus if not found
+        return [...prev, { 
+          vehicle_id: updatedBus.bus_id,
+          bus_id: updatedBus.bus_id,
+          latitude: updatedBus.latitude,
+          longitude: updatedBus.longitude,
+          location: updatedBus.location || { lat: updatedBus.latitude, lng: updatedBus.longitude },
+          speed: updatedBus.speed,
+          route_name: updatedBus.route_name,
+          route_id: updatedBus.route_id,
+          status: 'online',
+          last_updated: updatedBus.timestamp
+        }];
+      });
+    });
+
+    // Subscribe to passenger updates
+    const unsubscribePassenger = socketService.subscribe('passenger_update', (data) => {
+      setMapData(prev => {
+        const index = prev.findIndex(b => 
+          b.vehicle_id === data.bus_id || 
+          b.bus_id === data.bus_id
+        );
+        if (index >= 0) {
+          const newData = [...prev];
+          newData[index] = { 
+            ...newData[index], 
+            passenger_count: data.total_passenger_count,
+            occupancy: data.total_passenger_count,
+            total_weight: data.total_weight
+          };
+          return newData;
+        }
+        return prev;
+      });
+    });
+
+    // Subscribe to legacy bus_update events
+    const unsubscribeBus = socketService.subscribe('bus_update', (updatedBus) => {
       setMapData(prev => {
         const index = prev.findIndex(b => b.vehicle_id === updatedBus.vehicle_id);
         if (index >= 0) {
@@ -160,13 +279,15 @@ export function useMapData(refreshInterval = 5000) {
           newData[index] = { ...newData[index], ...updatedBus, status: 'online' };
           return newData;
         }
-        return [...prev, { ...updatedBus, status: 'online' }];
+        return prev;
       });
     });
 
     return () => {
       clearInterval(interval);
-      unsubscribe();
+      unsubscribeLocation();
+      unsubscribePassenger();
+      unsubscribeBus();
     };
   }, [fetchData, refreshInterval]);
 
