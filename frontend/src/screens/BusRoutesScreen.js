@@ -31,11 +31,30 @@ const BusRoutesScreen = () => {
   const navigation = useNavigation();
   const { refreshSession } = useSession();
 
+  // Ref to hold socket cleanup function
+  const socketCleanupRef = useRef(null);
+
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       initializeScreen();
     });
-    return unsubscribe;
+
+    const unsubscribeBlur = navigation.addListener('blur', () => {
+      // Clean up socket subscriptions when leaving screen
+      if (socketCleanupRef.current) {
+        socketCleanupRef.current();
+        socketCleanupRef.current = null;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeBlur();
+      if (socketCleanupRef.current) {
+        socketCleanupRef.current();
+        socketCleanupRef.current = null;
+      }
+    };
   }, [navigation]);
 
   const initializeScreen = async () => {

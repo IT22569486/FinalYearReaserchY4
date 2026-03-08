@@ -120,12 +120,12 @@ const MapViewComponent = ({
       ))}
 
       {/* Render a marker for each bus */}
-      {buses.map((bus) => {
+      {buses.map((bus, idx) => {
         // Support both {lat,lng} and {latitude,longitude} location formats
         const loc = bus.location || {};
-        const lat = loc.latitude ?? loc.lat ?? bus.latitude ?? null;
-        const lng = loc.longitude ?? loc.lng ?? bus.longitude ?? null;
-        if (lat == null || lng == null) return null; // skip buses with no location
+        const lat = parseFloat(loc.latitude ?? loc.lat ?? bus.latitude ?? '');
+        const lng = parseFloat(loc.longitude ?? loc.lng ?? bus.longitude ?? '');
+        if (isNaN(lat) || isNaN(lng)) return null; // skip buses with no/bad location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';
         const arrivalTime = passengerArrivalTimes[bus.busId];

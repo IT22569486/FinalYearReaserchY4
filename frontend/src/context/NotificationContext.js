@@ -75,7 +75,9 @@ export const NotificationProvider = ({ children }) => {
       });
 
       socketInstance.on('disconnect', (reason) => {
-        console.log('Socket disconnected. Reason:', reason);
+        if (reason !== 'io client disconnect') {
+          console.log('Notification socket disconnected. Reason:', reason);
+        }
       });
 
       setSocket(socketInstance);

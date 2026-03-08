@@ -83,11 +83,21 @@ exports.getGoogleRouteById = async (req, res) => {
 
     const route = routeData;
 
+    // Helper: build response from local path data (no Google API needed)
+    const buildLocalResponse = () => {
+      const path = route.path || [];
+      const coordinates = path
+        .filter(p => p.lat != null && p.lng != null)
+        .map(p => ({ latitude: parseFloat(p.lat), longitude: parseFloat(p.lng) }));
+      const stops = route.stops || routeService.extractStopsFromPath(path);
+      return res.json({ coordinates, stops, source: 'local' });
+    };
+
     // Obtain API key
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
-      console.error("Google Maps API key not configured on the server.");
-      return res.status(500).json({ error: "Google Maps API key not configured" });
+      console.warn("Google Maps API key not configured — using local path data.");
+      return buildLocalResponse();
     }
 
     let directionsUrl;
@@ -137,8 +147,8 @@ exports.getGoogleRouteById = async (req, res) => {
     const data = response.data;
     
     if (data.status !== "OK") {
-      console.error("Google Directions API failed:", data);
-      return res.status(400).json({ error: "Google Directions API failed", details: data });
+      console.warn("Google Directions API failed, falling back to local path:", data.status);
+      return buildLocalResponse();
     }
 
     const points = data.routes[0].overview_polyline.points;
