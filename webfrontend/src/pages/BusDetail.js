@@ -31,7 +31,7 @@ function BusDetail() {
   const chartData = [...history].reverse().map((record) => ({
     time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     speed: record.safe_speed || 0,
-    passengers: record.passenger_count || 0,
+    passengers: record.occupancy || 0,
     temperature: record.temperature || 0
   }));
 
@@ -70,13 +70,13 @@ function BusDetail() {
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <h1 className="page-title">{bus.vehicle_id}</h1>
+            <h1 className="page-title">{bus.busId}</h1>
             <span className={`badge ${bus.status}`}>
               <span className="badge-dot"></span>
               {bus.status}
             </span>
           </div>
-          <p className="page-subtitle">{bus.route_id}</p>
+          <p className="page-subtitle">{bus.routeId}</p>
         </div>
       </div>
 
@@ -116,7 +116,7 @@ function BusDetail() {
               <Users size={20} color="white" />
             </div>
           </div>
-          <div className="stat-value">{bus.passenger_count || 0}</div>
+          <div className="stat-value">{bus.occupancy || 0}</div>
           <div className="stat-label">{bus.passenger_load_kg || 0} kg total load</div>
         </div>
 
@@ -144,11 +144,11 @@ function BusDetail() {
           <div className="bus-info">
             <div className="info-item">
               <span className="info-label">Vehicle ID</span>
-              <span className="info-value">{bus.vehicle_id}</span>
+              <span className="info-value">{bus.busId}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Route</span>
-              <span className="info-value">{bus.route_id}</span>
+              <span className="info-value">{bus.routeId}</span>
             </div>
             <div className="info-item">
               <span className="info-label">Direction</span>
@@ -263,7 +263,7 @@ function BusDetail() {
                     </span>
                     <span style={{ marginRight: '1rem' }}>
                       <Users size={12} style={{ marginRight: '0.25rem' }} />
-                      {record.passenger_count} passengers
+                      {record.occupancy} passengers
                     </span>
                     <span>
                       {record.road_condition === 'Wet' ? <CloudRain size={12} /> : <Sun size={12} />}

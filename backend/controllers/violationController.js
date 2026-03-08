@@ -14,12 +14,11 @@ exports.getViolations = async (req, res) => {
       status: req.query.status,
       limit: parseInt(req.query.limit) || 100
     };
-
+    
     const violations = await violationService.getAllViolations(filters);
     res.json(violations);
   } catch (err) {
-    console.warn('Violations fetch failed:', err.message);
-    res.json([]);
+    res.status(500).json({ error: "Error fetching violations", details: err.message });
   }
 };
 
@@ -45,32 +44,13 @@ exports.getViolationById = async (req, res) => {
  */
 exports.createViolation = async (req, res) => {
   try {
-    let violation;
-    try {
-      violation = await violationService.createViolation(req.body);
-    } catch (dbErr) {
-      console.warn(`DB write failed (quota?): ${dbErr.message}`);
-      // Build a local violation object so Socket.IO still works
-      violation = {
-        id: `local_${Date.now()}`,
-        deviceKey: req.body.deviceKey,
-        busNumber: req.body.busNumber || 'UNKNOWN',
-        routeNumber: req.body.routeNumber || '',
-        type: req.body.type,
-        severity: req.body.details?.severity || 'MEDIUM',
-        description: req.body.details?.description || `${req.body.type} violation detected`,
-        details: req.body.details || {},
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        _localOnly: true,
-      };
-    }
-
-    // Emit socket event for real-time dashboard update (always)
+    const violation = await violationService.createViolation(req.body);
+    
+    // Emit socket event for real-time dashboard update
     if (req.io) {
-      req.io.emit("newViolation", { violation, deviceKey: violation.deviceKey, timestamp: new Date().toISOString() });
+      req.io.emit("newViolation", violation);
     }
-
+    
     res.status(201).json(violation);
   } catch (err) {
     res.status(500).json({ error: "Error creating violation", details: err.message });
@@ -85,16 +65,16 @@ exports.updateStatus = async (req, res) => {
   try {
     const { status, notes } = req.body;
     const violation = await violationService.updateViolationStatus(req.params.id, status, notes);
-
+    
     if (!violation) {
       return res.status(404).json({ message: "Violation not found" });
     }
-
+    
     // Emit socket event
     if (req.io) {
       req.io.emit("violationUpdated", violation);
     }
-
+    
     res.json(violation);
   } catch (err) {
     res.status(500).json({ error: "Error updating violation", details: err.message });
@@ -102,7 +82,7 @@ exports.updateStatus = async (req, res) => {
 };
 
 /**
- * Get violations by device
+ * Get violations by device (with pagination)
  * GET /api/violations/device/:deviceKey
  */
 exports.getByDevice = async (req, res) => {
@@ -112,8 +92,20 @@ exports.getByDevice = async (req, res) => {
     const result = await violationService.getViolationsByDevice(req.params.deviceKey, limit, page);
     res.json(result);
   } catch (err) {
-    console.warn('Device violations fetch failed:', err.message);
-    res.json({ violations: [], total: 0, page: 1, limit: 10, totalPages: 0 });
+    res.status(500).json({ error: "Error fetching violations", details: err.message });
+  }
+};
+
+/**
+ * Get violation summary grouped by bus (for offline device history)
+ * GET /api/violations/summary-by-bus
+ */
+exports.getSummaryByBus = async (req, res) => {
+  try {
+    const summary = await violationService.getSummaryByBus();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching summary", details: err.message });
   }
 };
 
@@ -127,24 +119,7 @@ exports.getStats = async (req, res) => {
     const stats = await violationService.getViolationStats(deviceKey);
     res.json(stats);
   } catch (err) {
-    console.warn('Stats fetch failed:', err.message);
-    // Return empty stats instead of error — lets frontend work with real-time data
-    res.json({ total: 0, today: 0, byType: {}, byStatus: {}, _error: err.message });
-  }
-};
-
-/**
- * Get violation summary grouped by bus
- * GET /api/violations/summary-by-bus
- */
-exports.getSummaryByBus = async (req, res) => {
-  try {
-    const summary = await violationService.getViolationSummaryByBus();
-    res.json(summary);
-  } catch (err) {
-    console.warn('Summary fetch failed:', err.message);
-    // Return empty array instead of error — lets frontend work with real-time data
-    res.json([]);
+    res.status(500).json({ error: "Error fetching stats", details: err.message });
   }
 };
 
@@ -158,12 +133,12 @@ exports.deleteViolation = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: "Violation not found" });
     }
-
+    
     // Emit socket event
     if (req.io) {
       req.io.emit("violationDeleted", { id: req.params.id });
     }
-
+    
     res.json({ message: "Violation deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: "Error deleting violation", details: err.message });

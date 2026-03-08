@@ -3,7 +3,21 @@ import { StyleSheet, View, Text } from 'react-native';
 import MapView, { Marker, Polyline, Callout } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 
-const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress, routePath, stops, routes = [] }) => {
+const MapViewComponent = ({
+  buses,
+  passengerLocation,
+  initialRegion,
+  onBusPress,
+  routePath,
+  stops,
+  routes = [],
+  passengerOriginStop,
+  passengerDestinationStop,
+  selectedOrigin,
+  selectedDestination,
+  passengerArrivalTimes = {},
+  passengerCounts = {},
+}) => {
   const mapRef = useRef(null);
 
   // Use passenger's location for the region if no initial region is provided
@@ -46,6 +60,46 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
         />
       )}
 
+      {passengerOriginStop && (
+        <Marker
+          coordinate={{
+            latitude: passengerOriginStop.lat,
+            longitude: passengerOriginStop.lng,
+          }}
+          title={`Origin: ${passengerOriginStop.stopName}`}
+          zIndex={120}
+        >
+          <View style={styles.originMarker}>
+            <Ionicons name="location" size={18} color="#FFFFFF" />
+          </View>
+          <Callout tooltip>
+            <View style={styles.stopCallout}>
+              <Text style={styles.stopName}>Origin: {passengerOriginStop.stopName}</Text>
+            </View>
+          </Callout>
+        </Marker>
+      )}
+
+      {passengerDestinationStop && (
+        <Marker
+          coordinate={{
+            latitude: passengerDestinationStop.lat,
+            longitude: passengerDestinationStop.lng,
+          }}
+          title={`Destination: ${passengerDestinationStop.stopName}`}
+          zIndex={120}
+        >
+          <View style={styles.destinationMarker}>
+            <Ionicons name="flag" size={18} color="#FFFFFF" />
+          </View>
+          <Callout tooltip>
+            <View style={styles.stopCallout}>
+              <Text style={styles.stopName}>Destination: {passengerDestinationStop.stopName}</Text>
+            </View>
+          </Callout>
+        </Marker>
+      )}
+
       {/* Render markers for each stop */}
       {stops && stops.map((stop, index) => (
         <Marker
@@ -74,22 +128,41 @@ const MapViewComponent = ({ buses, passengerLocation, initialRegion, onBusPress,
         if (lat == null || lng == null) return null; // skip buses with no location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';
+        const arrivalTime = passengerArrivalTimes[bus.busId];
+        const passengerCount = passengerCounts[bus.busId];
+        
         return (
           <Marker
             key={bus.busId}
             coordinate={{ latitude: lat, longitude: lng }}
             title={`Bus ${bus.busId}`}
-            onPress={() => onBusPress && onBusPress(bus)}
             zIndex={150}
           >
             <Ionicons name="bus" size={30} color="#007AFF" />
-            <Callout tooltip>
+            <Callout 
+              tooltip
+              onPress={() => {
+                if (selectedOrigin && selectedDestination && onBusPress) {
+                  onBusPress(bus);
+                }
+              }}
+            >
               <View style={styles.calloutView}>
                 <Text style={styles.calloutTitle}>{routeName}</Text>
                 <Text style={styles.calloutBusId}>{`Bus ${bus.busId}`}</Text>
                 <Text style={styles.calloutText}>{`Status: ${bus.status}`}</Text>
-                <Text style={styles.calloutText}>{`Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`}</Text>
                 <Text style={styles.calloutText}>{`Current Load: ${bus.occupancy}/${bus.capacity}`}</Text>
+                {passengerCount !== undefined && (
+                  <Text style={styles.calloutText}>{`Est. Passengers at Origin: ${passengerCount}`}</Text>
+                )}
+                {arrivalTime !== undefined && (
+                  <Text style={styles.calloutText}>{`Est. Arrival Time: ${Math.round(arrivalTime)} min`}</Text>
+                )}
+                {selectedOrigin && selectedDestination && (
+                  <View style={styles.selectButton}>
+                    <Text style={styles.selectButtonText}>Tap to Select Bus</Text>
+                  </View>
+                )}
               </View>
             </Callout>
           </Marker>
@@ -114,13 +187,44 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: 'rgba(255, 0, 0, 0.8)',
   },
+  originMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2E7D32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  destinationMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6A1B9A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  stopCallout: {
+    backgroundColor: 'white',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  stopName: {
+    fontSize: 13,
+    color: '#333',
+  },
   calloutView: {
     padding: 10,
     backgroundColor: 'white',
     borderRadius: 10,
     borderColor: '#ccc',
     borderWidth: 1,
-    width: 200,
+    width: 220,
   },
   calloutText: {
     fontSize: 14,
@@ -136,6 +240,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 5,
     color: 'gray',
+  },
+  selectButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  selectButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });
 

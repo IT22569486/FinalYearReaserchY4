@@ -1,7 +1,7 @@
 // mqtt/mqttBroker.js
 /**
  * MQTT Broker for CTB Device Communication
- * Handles device health updates, violations, real-time status, and safe speed telemetry
+ * Handles device health updates, violations, and real-time status
  * Uses Firebase Firestore for persistence
  */
 
@@ -9,7 +9,6 @@ const net = require('net');
 const deviceService = require('../services/deviceService');
 const violationService = require('../services/violationService');
 const fleetService = require('../services/fleetService');
-const dmsService = require('../services/dmsService');
 
 // Aedes will be dynamically imported when needed
 let aedes = null;
@@ -83,19 +82,17 @@ async function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
         console.log(`MQTT Message: ${topic}`);
 
         // Route messages based on topic
+        // IMPORTANT: /status must be checked BEFORE /safespeed because
+        // status topic is .../safespeed/status which matches both patterns
         try {
-            if (topic.includes('/dms/telemetry')) {
-                await handleDMSTelemetry(topic, payload);
-            } else if (topic.includes('/dms/event')) {
-                await handleDMSEvent(topic, payload);
-            } else if (topic.includes('/safespeed/telemetry')) {
-                await handleSafeSpeedTelemetry(topic, payload);
-            } else if (topic.includes('/health')) {
+            if (topic.includes('/health')) {
                 await handleHealthUpdate(topic, payload);
             } else if (topic.includes('/violation')) {
                 await handleViolation(topic, payload);
             } else if (topic.includes('/status')) {
                 await handleStatusUpdate(topic, payload);
+            } else if (topic.includes('/telemetry') || topic.includes('/safespeed')) {
+                await handleTelemetry(topic, payload);
             } else if (topic.includes('/component')) {
                 await handleComponentUpdate(topic, payload);
             }
@@ -131,27 +128,27 @@ async function handleHealthUpdate(topic, payload) {
 
     console.log(`Health update from ${device_key}`);
 
-    let device = null;
     try {
         // Update device in Firebase
-        device = await deviceService.updateDeviceHealth(device_key, {
+        const device = await deviceService.updateDeviceHealth(device_key, {
             busNumber: bus_number,
             routeNumber: route_number,
             ...healthData
         });
-        console.log(`Health update saved for ${device_key}`);
-    } catch (err) {
-        console.warn(`Could not save health to DB: ${err.message}`);
-    }
 
-    // ALWAYS notify dashboard via Socket.IO
-    if (io) {
-        io.emit('deviceHealthUpdate', {
-            deviceKey: device_key,
-            device: device || { deviceKey: device_key, busNumber: bus_number, routeNumber: route_number },
-            health: healthData,
-            timestamp: new Date().toISOString()
-        });
+        // Notify dashboard via Socket.IO
+        if (io) {
+            io.emit('deviceHealthUpdate', {
+                deviceKey: device_key,
+                device: device,
+                health: healthData,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`Health update processed for ${device_key}`);
+    } catch (err) {
+        console.error(`Error processing health update: ${err.message}`);
     }
 }
 
@@ -168,55 +165,32 @@ async function handleViolation(topic, payload) {
 
     console.log(`Violation from ${device_key}: ${type}`);
 
-    let violation = null;
-    let device = null;
-
-    // Try to get device info (may fail if quota exhausted)
     try {
-        device = await deviceService.getDeviceByKey(device_key);
-    } catch (devErr) {
-        console.warn(`Could not fetch device info: ${devErr.message}`);
-    }
-
-    // Build violation data
-    const violationData = {
-        deviceKey: device_key,
-        busNumber: device?.busNumber || payload.bus_number || 'UNKNOWN',
-        routeNumber: device?.routeNumber || payload.route_number || '',
-        type,
-        severity: details?.severity || 'MEDIUM',
-        description: details?.description || `${type} violation detected`,
-        details: details || {},
-        status: 'pending',
-        location: payload.location || null,
-        createdAt: new Date().toISOString(),
-    };
-
-    // Try to save to Firebase (may fail if quota exhausted)
-    try {
-        violation = await violationService.createViolation({
+        // Get device info
+        const device = await deviceService.getDeviceByKey(device_key);
+        
+        // Create violation in Firebase
+        const violation = await violationService.createViolation({
             deviceKey: device_key,
-            busNumber: violationData.busNumber,
-            routeNumber: violationData.routeNumber,
+            busNumber: device?.busNumber || payload.bus_number,
+            routeNumber: device?.routeNumber || payload.route_number,
             type,
             details: details || {},
             location: payload.location || null
         });
-        console.log(`Violation saved to DB: ${violation.id}`);
-    } catch (dbErr) {
-        console.warn(`Could not save violation to DB (quota?): ${dbErr.message}`);
-        // Use local data as the violation object
-        violation = { id: `local_${Date.now()}_${Math.random().toString(36).slice(2)}`, ...violationData };
-    }
 
-    // ALWAYS notify dashboard via Socket.IO (even if DB write failed)
-    if (io) {
-        io.emit('newViolation', {
-            violation: violation || violationData,
-            deviceKey: device_key,
-            timestamp: new Date().toISOString()
-        });
-        console.log(`Violation emitted via Socket.IO: ${type}`);
+        // Notify dashboard via Socket.IO
+        if (io) {
+            io.emit('newViolation', {
+                violation,
+                deviceKey: device_key,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`Violation recorded: ${violation.id}`);
+    } catch (err) {
+        console.error(`Error processing violation: ${err.message}`);
     }
 }
 
@@ -274,94 +248,28 @@ async function handleComponentUpdate(topic, payload) {
 }
 
 /**
- * Handle safe speed telemetry from device
- * Stores bus data in Firestore and broadcasts to dashboard
+ * Handle telemetry data from safe speed monitoring
  */
-async function handleSafeSpeedTelemetry(topic, payload) {
-    const parts = topic.split('/');
-    const deviceKey = parts[2];
+async function handleTelemetry(topic, payload) {
+    const busId = payload.vehicle_id || payload.busId;
+    if (!busId) {
+        console.error('Telemetry missing vehicle_id/busId');
+        return;
+    }
 
-    console.log(`Safe speed telemetry from ${deviceKey}: ${payload.safe_speed} km/h at ${payload.location_name}`);
+    console.log(`Telemetry from ${busId}`);
 
     try {
-        // Store in fleet service
         const busData = await fleetService.upsertBusData(payload);
-
-        // Store telemetry record
         await fleetService.addTelemetryRecord(payload);
 
-        // Notify dashboard via Socket.IO
         if (io) {
-            io.emit('bus_update', {
-                ...payload,
-                device_key: deviceKey,
-                status: 'online',
-                last_update: new Date().toISOString()
-            });
-
-            io.emit('safeSpeedUpdate', {
-                deviceKey,
-                vehicleId: payload.vehicle_id,
-                safeSpeed: payload.safe_speed,
-                location: payload.location_name,
-                roadCondition: payload.road_condition,
-                passengers: payload.passenger_count,
-                timestamp: new Date().toISOString()
-            });
+            io.emit('bus_update', busData);
         }
 
-        console.log(`Safe speed telemetry processed for ${payload.vehicle_id}`);
+        console.log(`Telemetry processed for ${busId}`);
     } catch (err) {
-        console.error(`Error processing safe speed telemetry: ${err.message}`);
-    }
-}
-
-/**
- * Handle DMS telemetry (driver state updates)
- */
-async function handleDMSTelemetry(topic, payload) {
-    const parts = topic.split('/');
-    const deviceKey = parts[2];
-
-    console.log(`DMS telemetry from ${deviceKey}: state=${payload.state}`);
-
-    try {
-        await dmsService.upsertDMSState(payload);
-
-        if (io) {
-            io.emit('dmsStateUpdate', {
-                deviceKey,
-                state: payload.state,
-                details: payload.details || {},
-                timestamp: payload.timestamp || new Date().toISOString()
-            });
-        }
-    } catch (err) {
-        console.error(`Error processing DMS telemetry: ${err.message}`);
-    }
-}
-
-/**
- * Handle DMS events (critical alerts like phone use, sleeping, etc.)
- */
-async function handleDMSEvent(topic, payload) {
-    const parts = topic.split('/');
-    const deviceKey = parts[2];
-
-    console.log(`DMS event from ${deviceKey}: ${payload.type} (${payload.severity})`);
-
-    try {
-        const event = await dmsService.addDMSEvent(payload);
-
-        if (io) {
-            io.emit('dmsEvent', {
-                event,
-                deviceKey,
-                timestamp: payload.timestamp || new Date().toISOString()
-            });
-        }
-    } catch (err) {
-        console.error(`Error processing DMS event: ${err.message}`);
+        console.error(`Error processing telemetry: ${err.message}`);
     }
 }
 

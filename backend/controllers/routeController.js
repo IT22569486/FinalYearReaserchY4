@@ -1,32 +1,12 @@
-const admin = require("firebase-admin");
-const db = admin.firestore();
 const axios = require("axios");
 const decodePolyline = require("@mapbox/polyline").decode;
-
-// Helper: extract stops array from path
-function extractStopsFromPath(path = []) {
-  return path.map(p => p.stopName).filter(Boolean);
-}
+const routeService = require("../services/routeService");
 
 // Create new route
 exports.createRoute = async (req, res) => {
   try {
-    const { name, path } = req.body;
-    if (!name || !Array.isArray(path) || path.length === 0) {
-      return res.status(400).json({ error: "name and non-empty path are required" });
-    }
-
-    const stops = extractStopsFromPath(path);
-
-    const docRef = await db.collection("routes").add({
-      name,
-      path,
-      stops,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    const doc = await docRef.get();
-    res.status(201).json({ id: doc.id, ...doc.data() });
+    const route = await routeService.createRoute(req.body);
+    res.status(201).json(route);
   } catch (err) {
     res.status(500).json({ error: "Failed to create route", details: err.message });
   }
@@ -35,8 +15,7 @@ exports.createRoute = async (req, res) => {
 // Get all routes
 exports.getAllRoutes = async (req, res) => {
   try {
-    const snap = await db.collection("routes").orderBy("createdAt", "desc").get();
-    const routes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const routes = await routeService.getAllRoutes();
     res.json(routes);
   } catch (err) {
     res.status(500).json({ error: "Failed to get routes", details: err.message });
@@ -46,10 +25,9 @@ exports.getAllRoutes = async (req, res) => {
 // Get single route by id
 exports.getRouteById = async (req, res) => {
   try {
-    const id = req.params.id;
-    const doc = await db.collection("routes").doc(id).get();
-    if (!doc.exists) return res.status(404).json({ error: "Route not found" });
-    res.json({ id: doc.id, ...doc.data() });
+    const route = await routeService.getRouteById(req.params.id);
+    if (!route) return res.status(404).json({ error: "Route not found" });
+    res.json(route);
   } catch (err) {
     res.status(500).json({ error: "Failed to get route", details: err.message });
   }
@@ -58,23 +36,9 @@ exports.getRouteById = async (req, res) => {
 // Update a route
 exports.updateRoute = async (req, res) => {
   try {
-    const id = req.params.id;
-    const payload = req.body;
-
-    // if path is being updated, also update stops
-    if (payload.path) {
-      payload.stops = extractStopsFromPath(payload.path);
-    }
-
-    payload.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
-    const docRef = db.collection("routes").doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Route not found" });
-
-    await docRef.update(payload);
-    const updated = await docRef.get();
-    res.json({ id: updated.id, ...updated.data() });
+    const route = await routeService.updateRoute(req.params.id, req.body);
+    if (!route) return res.status(404).json({ error: "Route not found" });
+    res.json(route);
   } catch (err) {
     res.status(500).json({ error: "Failed to update route", details: err.message });
   }
@@ -83,12 +47,8 @@ exports.updateRoute = async (req, res) => {
 // Delete a route
 exports.deleteRoute = async (req, res) => {
   try {
-    const id = req.params.id;
-    const docRef = db.collection("routes").doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: "Route not found" });
-
-    await docRef.delete();
+    const deleted = await routeService.deleteRoute(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Route not found" });
     res.json({ message: "Route deleted" });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete route", details: err.message });
@@ -99,22 +59,13 @@ exports.deleteRoute = async (req, res) => {
 exports.getRoutesByStops = async (req, res) => {
   try {
     const { start, destination } = req.query;
-    if (!start || !destination) {
-      return res.status(400).json({ error: "start and destination query parameters are required" });
-    }
-
-    // Firestore supports array-contains for a single value. Query for start and filter for destination.
-    const snap = await db.collection("routes")
-      .where("stops", "array-contains", start)
-      .get();
-
-    const results = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(r => Array.isArray(r.stops) && r.stops.includes(destination));
-
+    const results = await routeService.getRoutesByStops(start, destination);
     res.json(results);
   } catch (err) {
-    res.status(500).json({ error: "Failed to filter routes", details: err.message });
+    res.status(err.message.includes("required") ? 400 : 500).json({ 
+      error: "Failed to filter routes", 
+      details: err.message 
+    });
   }
 };
 
@@ -124,13 +75,13 @@ exports.getGoogleRouteById = async (req, res) => {
     const routeId = req.params.id;
     
     console.log(`Fetching Google route for routeId: ${routeId}`);
-    const doc = await db.collection("routes").doc(routeId).get();
-    if (!doc.exists) {
+    const routeData = await routeService.getRouteById(routeId);
+    if (!routeData) {
       console.error(`Route not found for id: ${routeId}`);
       return res.status(404).json({ error: "Route not found" });
     }
 
-    const route = doc.data();
+    const route = routeData;
 
     // Obtain API key
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -195,7 +146,7 @@ exports.getGoogleRouteById = async (req, res) => {
 
     res.json({
       coordinates,
-      stops: route.stops || extractStopsFromPath(route.path),
+      stops: route.stops || routeService.extractStopsFromPath(route.path),
     });
 
   } catch (err) {

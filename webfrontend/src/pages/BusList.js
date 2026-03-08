@@ -18,8 +18,8 @@ function BusList() {
   // Filter buses based on search and status
   const filteredBuses = buses.filter(bus => {
     const matchesSearch = 
-      bus.vehicle_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bus.route_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bus.busId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bus.routeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       bus.location_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = 
@@ -71,17 +71,17 @@ function BusList() {
               <tbody>
                 {filteredBuses.map((bus) => (
                   <tr 
-                    key={bus.vehicle_id}
-                    onClick={() => navigate(`/buses/${bus.vehicle_id}`)}
+                    key={bus.busId}
+                    onClick={() => navigate(`/buses/${bus.busId}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     <td style={{ fontWeight: 600 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Bus size={16} color="#db046c" />
-                        {bus.vehicle_id}
+                        {bus.busId}
                       </div>
                     </td>
-                    <td>{bus.route_id}</td>
+                    <td>{bus.routeId}</td>
                     <td>{bus.location_name || 'Unknown'}</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
                       {bus.direction?.replace(/_/g, ' \u2192 ') || '-'}
@@ -101,7 +101,7 @@ function BusList() {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Users size={14} color="#9ca3af" />
-                        {bus.passenger_count || 0}
+                        {bus.occupancy || 0}
                       </div>
                     </td>
                     <td>

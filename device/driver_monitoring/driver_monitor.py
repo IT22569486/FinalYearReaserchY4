@@ -103,7 +103,10 @@ ENABLE_SEATBELT = _comp.get("enable_seatbelt_detection", True)
 ENABLE_LSTM = _comp.get("enable_lstm_model", False)
 USE_ONNX = _comp.get("use_onnx", True)
 YOLO_IMGSZ = _comp.get("yolo_imgsz", 320)
-CAMERA_INDEX = _cfg.camera_index
+# Use video_source from component config (IP webcam URL), fallback to camera index
+VIDEO_SOURCE = _comp.get("video_source", None)
+CAMERA_SOURCE = VIDEO_SOURCE if VIDEO_SOURCE else _cfg.camera_index
+IS_STREAM = isinstance(CAMERA_SOURCE, str) and CAMERA_SOURCE.startswith("http")
 FRAME_WIDTH = _cfg.camera_width
 FRAME_HEIGHT = _cfg.camera_height
 SEND_INTERVAL = _cfg.send_interval
@@ -679,14 +682,15 @@ class DriverMonitor:
             print("[DMS] ERROR: mediapipe and scipy are required.")
             return
 
-        cap = cv2.VideoCapture(CAMERA_INDEX)
+        cap = cv2.VideoCapture(CAMERA_SOURCE)
         if not cap.isOpened():
-            print("[DMS] ERROR: Could not open camera.")
+            print(f"[DMS] ERROR: Could not open camera/stream: {CAMERA_SOURCE}")
             self._publish_component_status("error", "Camera not available")
             return
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+        if not IS_STREAM:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
         self.running = True
         self._publish_component_status("running", "DMS active")

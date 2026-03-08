@@ -34,5 +34,6 @@ function initFirebase() {
 
 const adminApp = initFirebase();
 const db = adminApp.firestore();
+db.settings({ preferRest: true });
 
 module.exports = { admin: adminApp, db };

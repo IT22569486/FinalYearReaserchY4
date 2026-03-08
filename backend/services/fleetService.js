@@ -7,45 +7,69 @@
 
 const { db, admin } = require("../firebase");
 
-const busesCollection = db.collection("fleet_buses");
+const busesCollection = db.collection("buses");
 const telemetryCollection = db.collection("fleet_telemetry");
 
 /**
  * Create or update bus data from telemetry
  */
 async function upsertBusData(data) {
-    const vehicleId = data.vehicle_id;
-    if (!vehicleId) throw new Error("Missing vehicle_id");
+    const busId = data.busId || data.vehicle_id;
+    if (!busId) throw new Error("Missing busId");
 
-    const docRef = busesCollection.doc(vehicleId);
+    const docRef = busesCollection.doc(busId);
     const doc = await docRef.get();
 
-    const busData = {
-        vehicle_id: vehicleId,
-        route_id: data.route_id || '',
-        latitude: data.latitude || 0,
-        longitude: data.longitude || 0,
-        location_name: data.location_name || 'Unknown',
-        direction: data.direction || '',
-        safe_speed: data.safe_speed || 0,
-        road_condition: data.road_condition || 'Dry',
-        passenger_count: data.passenger_count || 0,
-        passenger_load_kg: data.passenger_load_kg || 0,
-        temperature: data.temperature || 0,
-        humidity: data.humidity || 0,
-        status: 'online',
-        last_update: new Date().toISOString(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
     if (doc.exists) {
-        await docRef.update(busData);
-    } else {
-        busData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-        await docRef.set(busData);
-    }
+        // Update: only overwrite fields actually present in the incoming data
+        // This prevents status-only or partial messages from zeroing out real values
+        const updateData = {
+            busId: busId,
+            status: 'online',
+            last_update: new Date().toISOString(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        if ('routeId' in data || 'route_id' in data) updateData.routeId = data.routeId || data.route_id;
+        if ('latitude' in data) {
+            updateData.latitude = data.latitude;
+            updateData.location = { lat: data.latitude, lng: data.longitude || 0 };
+        }
+        if ('longitude' in data) updateData.longitude = data.longitude;
+        if ('location_name' in data) updateData.location_name = data.location_name;
+        if ('direction' in data) updateData.direction = data.direction;
+        if ('safe_speed' in data) updateData.safe_speed = data.safe_speed;
+        if ('road_condition' in data) updateData.road_condition = data.road_condition;
+        if ('occupancy' in data || 'passenger_count' in data) updateData.occupancy = data.occupancy || data.passenger_count || 0;
+        if ('passenger_load_kg' in data) updateData.passenger_load_kg = data.passenger_load_kg;
+        if ('temperature' in data) updateData.temperature = data.temperature;
+        if ('humidity' in data) updateData.humidity = data.humidity;
 
-    return busData;
+        await docRef.update(updateData);
+        return { ...doc.data(), ...updateData };
+    } else {
+        // Create: set all fields with defaults
+        const busData = {
+            busId: busId,
+            routeId: data.routeId || data.route_id || '',
+            latitude: data.latitude || 0,
+            longitude: data.longitude || 0,
+            location: { lat: data.latitude || 0, lng: data.longitude || 0 },
+            location_name: data.location_name || 'Unknown',
+            direction: data.direction || '',
+            safe_speed: data.safe_speed || 0,
+            road_condition: data.road_condition || 'Dry',
+            occupancy: data.occupancy || data.passenger_count || 0,
+            passenger_load_kg: data.passenger_load_kg || 0,
+            temperature: data.temperature || 0,
+            humidity: data.humidity || 0,
+            status: 'online',
+            last_update: new Date().toISOString(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        await docRef.set(busData);
+        return busData;
+    }
 }
 
 /**
@@ -53,15 +77,15 @@ async function upsertBusData(data) {
  */
 async function addTelemetryRecord(data) {
     const record = {
-        vehicle_id: data.vehicle_id || '',
-        route_id: data.route_id || '',
+        busId: data.busId || data.vehicle_id || '',
+        routeId: data.routeId || data.route_id || '',
         latitude: data.latitude || 0,
         longitude: data.longitude || 0,
         location_name: data.location_name || 'Unknown',
         direction: data.direction || '',
         safe_speed: data.safe_speed || 0,
         road_condition: data.road_condition || 'Dry',
-        passenger_count: data.passenger_count || 0,
+        occupancy: data.occupancy || data.passenger_count || 0,
         passenger_load_kg: data.passenger_load_kg || 0,
         temperature: data.temperature || 0,
         humidity: data.humidity || 0,
@@ -99,7 +123,7 @@ async function getFleetOverview() {
         if (bus.safe_speed) totalSpeed += bus.safe_speed;
         if (bus.road_condition === 'Wet') wetRoads++;
         else dryRoads++;
-        if (bus.passenger_count) totalPassengers += bus.passenger_count;
+        if (bus.occupancy) totalPassengers += bus.occupancy;
     }
 
     return {
@@ -126,14 +150,19 @@ async function getAllBuses() {
         if (bus.last_update) {
             isOnline = new Date(bus.last_update) >= onlineThreshold;
         }
+        // Normalize coordinates: fall back to location.lat/lng if top-level fields missing
+        const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
+        const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
         return {
             id: doc.id,
             ...bus,
+            latitude: lat,
+            longitude: lng,
             status: isOnline ? 'online' : 'offline'
         };
     });
 
-    buses.sort((a, b) => (a.vehicle_id || '').localeCompare(b.vehicle_id || ''));
+    buses.sort((a, b) => (a.busId || '').localeCompare(b.busId || ''));
     return { buses, count: buses.length };
 }
 
@@ -147,10 +176,14 @@ async function getBusDetails(vehicleId) {
     const bus = doc.data();
     const onlineThreshold = new Date(Date.now() - 30000);
     const isOnline = bus.last_update ? new Date(bus.last_update) >= onlineThreshold : false;
+    const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
+    const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
 
     return {
         id: doc.id,
         ...bus,
+        latitude: lat,
+        longitude: lng,
         status: isOnline ? 'online' : 'offline'
     };
 }
@@ -161,11 +194,17 @@ async function getBusDetails(vehicleId) {
 async function getBusHistory(vehicleId, hours = 24, limit = 100) {
     const timeThreshold = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-    // Query by vehicle_id
-    const snapshot = await telemetryCollection
-        .where("vehicle_id", "==", vehicleId)
+    // Query by busId (fall back to vehicle_id for old records)
+    let snapshot = await telemetryCollection
+        .where("busId", "==", vehicleId)
         .limit(limit * 2)
         .get();
+    if (snapshot.empty) {
+        snapshot = await telemetryCollection
+            .where("vehicle_id", "==", vehicleId)
+            .limit(limit * 2)
+            .get();
+    }
 
     const history = snapshot.docs
         .map(doc => doc.data())
@@ -179,7 +218,7 @@ async function getBusHistory(vehicleId, hours = 24, limit = 100) {
         .slice(0, limit);
 
     return {
-        vehicle_id: vehicleId,
+        busId: vehicleId,
         history,
         count: history.length
     };
@@ -195,17 +234,20 @@ async function getMapData() {
     const buses = snapshot.docs
         .map(doc => {
             const bus = doc.data();
-            if (!bus.latitude || !bus.longitude) return null;
+            // Fall back to location.lat/lng if top-level latitude/longitude missing or zero
+            const lat = bus.latitude || parseFloat(bus.location?.lat) || 0;
+            const lng = bus.longitude || parseFloat(bus.location?.lng) || 0;
+            if (!lat || !lng) return null;
             const isOnline = bus.last_update ? new Date(bus.last_update) >= onlineThreshold : false;
             return {
-                vehicle_id: bus.vehicle_id,
-                latitude: bus.latitude,
-                longitude: bus.longitude,
-                location_name: bus.location_name,
-                safe_speed: bus.safe_speed,
-                road_condition: bus.road_condition,
-                direction: bus.direction,
-                passenger_count: bus.passenger_count,
+                busId: bus.busId || doc.id,
+                latitude: lat,
+                longitude: lng,
+                location_name: bus.location_name || '',
+                safe_speed: bus.safe_speed || 0,
+                road_condition: bus.road_condition || 'Dry',
+                direction: bus.direction || '',
+                occupancy: bus.occupancy || 0,
                 status: isOnline ? 'online' : 'offline'
             };
         })
@@ -223,13 +265,14 @@ async function getRoutes() {
 
     snapshot.docs.forEach(doc => {
         const bus = doc.data();
-        if (bus.route_id) {
-            routeCounts[bus.route_id] = (routeCounts[bus.route_id] || 0) + 1;
+        const rid = bus.routeId || bus.route_id;
+        if (rid) {
+            routeCounts[rid] = (routeCounts[rid] || 0) + 1;
         }
     });
 
     const routes = Object.entries(routeCounts).map(([routeId, count]) => ({
-        route_id: routeId,
+        routeId: routeId,
         bus_count: count
     }));
 

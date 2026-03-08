@@ -42,11 +42,11 @@ class SafetyScoreService {
 
   async getBusSafetyData(busId) {
     try {
-      // 1. Find bus by doc ID in fleet_buses (doc ID = vehicle_id)
-      let busDoc = await db.collection('fleet_buses').doc(busId).get();
+      // 1. Find bus by doc ID in buses collection (doc ID = busId)
+      let busDoc = await db.collection('buses').doc(busId).get();
       if (!busDoc.exists) {
-        // Fallback: search by vehicle_id field
-        const snap = await db.collection('fleet_buses').where('vehicle_id', '==', busId).limit(1).get();
+        // Fallback: search by busId field
+        const snap = await db.collection('buses').where('busId', '==', busId).limit(1).get();
         if (snap.empty) throw new Error(`Bus not found: ${busId}`);
         busDoc = snap.docs[0];
       }
@@ -81,8 +81,8 @@ class SafetyScoreService {
       const safetyScore = this.calculateSafetyScore(warnings);
       const { rating, color } = this.getSafetyRating(safetyScore);
 
-      // 4. Route name from route_id field
-      let routeName = busData.route_id || 'Unknown Route';
+      // 4. Route name from routeId field
+      let routeName = busData.routeId || busData.route_id || 'Unknown Route';
 
       return {
         busId, busNumber: busId,
@@ -133,7 +133,7 @@ class SafetyScoreService {
 
   async updateSafetyScoreRealtime(busId, violationType) {
     const safetyData = await this.getBusSafetyData(busId);
-    const busDoc = await db.collection('fleet_buses').doc(busId).get();
+    const busDoc = await db.collection('buses').doc(busId).get();
     if (busDoc.exists) {
       await busDoc.ref.update({
         safetyScore: safetyData.safetyScore, safetyRating: safetyData.safetyRating,

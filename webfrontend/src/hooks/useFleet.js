@@ -55,7 +55,7 @@ export function useBuses(refreshInterval = 5000) {
     socketService.connect();
     const unsubscribe = socketService.subscribe('bus_update', (updatedBus) => {
       setBuses(prev => {
-        const index = prev.findIndex(b => b.vehicle_id === updatedBus.vehicle_id);
+        const index = prev.findIndex(b => b.busId === updatedBus.busId);
         if (index >= 0) {
           const newBuses = [...prev];
           newBuses[index] = { ...newBuses[index], ...updatedBus, status: 'online' };
@@ -154,7 +154,7 @@ export function useMapData(refreshInterval = 5000) {
     socketService.connect();
     const unsubscribe = socketService.subscribe('bus_update', (updatedBus) => {
       setMapData(prev => {
-        const index = prev.findIndex(b => b.vehicle_id === updatedBus.vehicle_id);
+        const index = prev.findIndex(b => b.busId === updatedBus.busId);
         if (index >= 0) {
           const newData = [...prev];
           newData[index] = { ...newData[index], ...updatedBus, status: 'online' };

@@ -255,7 +255,7 @@ function Dashboard() {
             </div>
           ) : (
             buses.slice(0, 3).map((bus, idx) => (
-              <div key={bus.vehicle_id} style={{
+              <div key={bus.busId} style={{
                 background: idx === 0 ? 'rgba(254, 243, 199, 0.3)' : 'rgba(255, 255, 255, 0.65)',
                 backdropFilter: 'blur(12px)',
                 border: idx === 0 ? `1px solid ${themeColor}` : '1px solid rgba(255, 255, 255, 0.8)',
@@ -266,25 +266,25 @@ function Dashboard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ color: themeColor }}><Bus size={20} /></div>
-                    <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>#{bus.vehicle_id} - Route {bus.route_id}</span>
+                    <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>#{bus.busId} - Route {bus.routeId}</span>
                   </div>
                   <span style={{
                     fontSize: '13px',
                     fontWeight: 600,
-                    color: bus.status === 'Online' ? '#eab308' : '#6b7280',
-                    background: bus.status === 'Online' ? '#fef9c3' : '#f3f4f6',
+                    color: bus.status === 'online' ? '#eab308' : '#6b7280',
+                    background: bus.status === 'online' ? '#fef9c3' : '#f3f4f6',
                     padding: '4px 12px',
                     borderRadius: '16px'
                   }}>
-                    {bus.status === 'Online' ? 'In Transit' : 'Offline'}
+                    {bus.status === 'online' ? 'In Transit' : 'Offline'}
                   </span>
                 </div>
 
                 {/* Route progress visual */}
                 <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', position: 'relative' }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${themeColor}`, background: '#fff', zIndex: 2 }}></div>
-                  <div style={{ flex: 1, height: '2px', background: bus.status === 'Online' ? themeColor : '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${bus.status === 'Online' ? themeColor : '#d1d5db'}`, background: '#fff', zIndex: 2 }}></div>
+                  <div style={{ flex: 1, height: '2px', background: bus.status === 'online' ? themeColor : '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: `3px solid ${bus.status === 'online' ? themeColor : '#d1d5db'}`, background: '#fff', zIndex: 2 }}></div>
                   <div style={{ flex: 1, height: '2px', background: '#e5e7eb', borderStyle: 'dashed', borderWidth: '1px', borderBottom: 'none', borderLeft: 'none', borderRight: 'none' }}></div>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', border: '3px solid #d1d5db', background: '#fff', zIndex: 2 }}></div>
                 </div>
@@ -297,9 +297,9 @@ function Dashboard() {
 
                 <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <img src={`https://ui-avatars.com/api/?name=Driver+${bus.vehicle_id.slice(-2)}&background=f3f4f6&color=4b5563`} alt="Driver" style={{ width: 40, height: 40, borderRadius: '50%' }} />
+                    <img src={`https://ui-avatars.com/api/?name=Driver+${(bus.busId || '').slice(-2)}&background=f3f4f6&color=4b5563`} alt="Driver" style={{ width: 40, height: 40, borderRadius: '50%' }} />
                     <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>Driver #{bus.vehicle_id.substring(0, 4)}</div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>Driver #{(bus.busId || '').substring(0, 4)}</div>
                       <div style={{ fontSize: '13px', color: '#6b7280' }}>Speed: {bus.safe_speed} km/h</div>
                     </div>
                   </div>
@@ -351,7 +351,7 @@ function Dashboard() {
 
                 {mapData.map((bus) => (
                   <Marker
-                    key={bus.vehicle_id}
+                    key={bus.busId}
                     position={[bus.latitude, bus.longitude]}
                     icon={createBusIcon(bus.status)}
                   >
@@ -359,7 +359,7 @@ function Dashboard() {
                       <div style={{ minWidth: '180px', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--glass-border)' }}>
                           <Bus size={16} color="#db046c" />
-                          <strong style={{ fontSize: '14px' }}>{bus.vehicle_id}</strong>
+                          <strong style={{ fontSize: '14px' }}>{bus.busId}</strong>
                           <span style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', background: bus.status === 'online' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)', color: bus.status === 'online' ? '#10b981' : '#f43f5e' }}>
                             {bus.status}
                           </span>

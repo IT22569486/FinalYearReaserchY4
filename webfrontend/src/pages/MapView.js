@@ -185,7 +185,7 @@ function MapView() {
 
               {mapData.map((bus) => (
                 <Marker
-                  key={bus.vehicle_id}
+                  key={bus.busId}
                   position={[bus.latitude, bus.longitude]}
                   icon={createBusIcon(bus.status)}
                 >
@@ -203,7 +203,7 @@ function MapView() {
                         borderBottom: '1px solid var(--glass-border)'
                       }}>
                         <Bus size={18} color="#db046c" />
-                        <strong style={{ fontSize: '1rem' }}>{bus.vehicle_id}</strong>
+                        <strong style={{ fontSize: '1rem' }}>{bus.busId}</strong>
                         <span
                           style={{
                             marginLeft: 'auto',
@@ -235,7 +235,7 @@ function MapView() {
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <Users size={14} color="#f59e0b" />
-                          <span style={{ color: 'var(--gray-200)' }}>{bus.passenger_count || 0} passengers</span>
+                          <span style={{ color: 'var(--gray-200)' }}>{bus.occupancy || 0} passengers</span>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

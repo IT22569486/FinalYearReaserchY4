@@ -88,6 +88,20 @@ const HomeScreen = () => {
     return 'Good Evening';
   };
 
+  // Carousel tips
+  const carouselTips = [
+    { icon: 'shield-checkmark', title: 'Travel Safety', text: 'Always wear your seatbelt and follow bus rules.' },
+    { icon: 'star', title: 'App Features', text: 'Track your bus live and get real-time notifications.' },
+    { icon: 'gift', title: 'Earn Rewards', text: 'Collect points for every trip and redeem for discounts.' },
+  ];
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCarouselIndex(i => (i + 1) % carouselTips.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -124,6 +138,32 @@ const HomeScreen = () => {
             <Ionicons name="calendar-outline" size={32} color="#333" />
             <Text style={styles.secondaryCardTitle}>Timetables</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Animated Carousel */}
+        <View style={styles.carouselContainer}>
+          <Ionicons name={carouselTips[carouselIndex].icon} size={32} color="#007AFF" style={{marginBottom: 8}} />
+          <Text style={styles.carouselTitle}>{carouselTips[carouselIndex].title}</Text>
+          <Text style={styles.carouselText}>{carouselTips[carouselIndex].text}</Text>
+        </View>
+
+        {/* Social Media / Community Section */}
+        <View style={styles.socialContainer}>
+          <Text style={styles.socialTitle}>Connect with Us</Text>
+          <View style={styles.socialLinksRow}>
+            <TouchableOpacity style={styles.socialIcon} onPress={() => {/* open Facebook */}}>
+              <Ionicons name="logo-facebook" size={28} color="#4267B2" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.socialIcon} onPress={() => {/* open Twitter */}}>
+              <Ionicons name="logo-twitter" size={28} color="#1DA1F2" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.socialIcon} onPress={() => {/* open Instagram */}}>
+              <Ionicons name="logo-instagram" size={28} color="#C13584" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.socialIcon} onPress={() => navigation.navigate('Community')}>
+              <Ionicons name="people-outline" size={28} color="#007AFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity 
@@ -293,6 +333,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 2,
+  },
+  bannerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  banner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 14,
+    marginHorizontal: 4,
+    marginBottom: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  bannerTitle: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  bannerSubtitle: {
+    color: '#e6f0ff',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  carouselContainer: {
+    backgroundColor: '#f2f2f7',
+    borderRadius: 12,
+    padding: 18,
+    alignItems: 'center',
+    marginBottom: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  carouselTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    marginBottom: 4,
+  },
+  carouselText: {
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'center',
+  },
+  socialContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 18,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  socialTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#007AFF',
+    marginBottom: 8,
+  },
+  socialLinksRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  socialIcon: {
+    marginHorizontal: 10,
   },
   sectionHeader: {
     flexDirection: 'row',

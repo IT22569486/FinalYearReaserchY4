@@ -1,153 +1,116 @@
-import React, { useEffect, useRef, useState } from 'react'; 
-import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native'; // Import more components
+import React, { useEffect, useState } from 'react'; 
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthRequest, makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { FontAwesome } from '@expo/vector-icons';
 import { BACKEND_URL } from '../config';
+import { updateLastActivity } from '../utils/authUtils';
+import * as Google from 'expo-auth-session/providers/google';
 import logo from '../../assets/logo.png';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const AUTH0_DOMAIN = 'dev-j4cwj6o18hb2ay8w.us.auth0.com';
-const AUTH0_CLIENT_ID = 'ORPjvT8DuzUGgEmIY7eZiHS3O8EBJWkO';
-
-// Auth0 discovery document
-const discovery = {
-  authorizationEndpoint: `https://${AUTH0_DOMAIN}/authorize`,
-  tokenEndpoint: `https://${AUTH0_DOMAIN}/oauth/token`,
-  revocationEndpoint: `https://${AUTH0_DOMAIN}/oauth/revoke`,
-};
-
 const LoginScreen = () => {
   const navigation = useNavigation();
-  const hasHandledResponse = useRef(false);
-
-  // State for manual login fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const redirectUri = makeRedirectUri({ useProxy: true });
+  // Firebase Google Sign-In using expo-auth-session
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    expoClientId: '525212256594-csailp63qiomntb6f9srkbc6as3avjv7.apps.googleusercontent.com',
+    iosClientId: '525212256594-f2mjfe9emr5qqq6id044oh9kk88tj64n.apps.googleusercontent.com',
+    webClientId: '525212256594-csailp63qiomntb6f9srkbc6as3avjv7.apps.googleusercontent.com',
+  });
 
-  const [request, response, promptAsync] = useAuthRequest(
-    {
-      clientId: AUTH0_CLIENT_ID,
-      scopes: ['openid', 'profile', 'email'],
-      redirectUri: redirectUri,
-      extraParams: {
-        audience: `https://${AUTH0_DOMAIN}/api/v2/`,
-      },
-    },
-    discovery
-  );
-
+  // Handle Firebase Google Sign-In response
   useEffect(() => {
-    // Check the response and ensure we haven't handled it yet.
-    if (response && !hasHandledResponse.current) {
-      // Mark that we are handling this response.
-      hasHandledResponse.current = true;
-
-      if (response.type === 'success') {
-        const { code } = response.params;
-        exchangeCodeForToken(code, request);
-      } else if (response.type === 'error') {
-        Alert.alert('Authentication Error', response.error_description || 'Something went wrong');
-        hasHandledResponse.current = false;
-      } else {
-        hasHandledResponse.current = false;
-      }
+    if (googleResponse?.type === 'success' && googleResponse.authentication) {
+      handleGoogleSignInWithFirebase(googleResponse.authentication.accessToken);
     }
-  }, [response, request]);
+  }, [googleResponse]);
 
   const handleManualLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Login Failed', 'Please enter your email and password.');
-      return;
-    }
-    setIsLoading(true);
-    console.log('[Login] Starting login...');
-    console.log('[Login] BACKEND_URL:', BACKEND_URL);
-    console.log('[Login] Email:', email);
     try {
-      console.log('[Login] POSTing to:', `${BACKEND_URL}/api/user/login`);
+      setIsLoading(true);
+      
+      // Use backend email/password authentication
       const res = await axios.post(`${BACKEND_URL}/api/user/login`, {
         email,
         password,
       });
 
-      console.log('[Login] Response status:', res.status);
-      console.log('[Login] Response data:', JSON.stringify(res.data));
-
-      const { token } = res.data;
-
-      if (!token) {
-        console.error('[Login] ERROR: No token in response!', res.data);
-        Alert.alert('Login Failed', 'Server did not return a token.');
-        return;
-      }
-
-      console.log('[Login] Token received, saving to AsyncStorage...');
+      const { token, id, _id, uid } = res.data;
       await AsyncStorage.setItem('userToken', token);
-      console.log('[Login] Token saved. Navigating to MainTabs...');
-      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-      console.log('[Login] navigation.reset called');
+      const resolvedUserId = id || _id || uid;
+      if (resolvedUserId) {
+        await AsyncStorage.setItem('userId', String(resolvedUserId));
+      }
+      await updateLastActivity();
+      Alert.alert('Login Success');
+      navigation.replace('MainTabs');
     } catch (error) {
-      console.error('[Login] Request failed!');
-      console.error('[Login] Error message:', error.message);
-      console.error('[Login] Response status:', error.response?.status);
-      console.error('[Login] Response data:', JSON.stringify(error.response?.data));
-      Alert.alert('Login Failed', error.response?.data?.message || error.message || 'Invalid email or password.');
+      console.error('Manual login failed:', error.response?.data || error.message);
+      Alert.alert('Login Failed', error.response?.data?.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const exchangeCodeForToken = async (code, authRequest) => {
+  const handleGoogleSignInWithFirebase = async (accessToken) => {
     try {
-      const tokenResponse = await axios.post(`https://${AUTH0_DOMAIN}/oauth/token`, {
-        client_id: AUTH0_CLIENT_ID,
-        code: code,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-        code_verifier: authRequest?.codeVerifier,
+      setIsLoading(true);
+      
+      // Get user info from Google
+      const userInfoResponse = await axios.get(
+        `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${accessToken}`
+      );
+      
+      const userInfo = userInfoResponse.data;
+      
+      // Send user info to backend for authentication
+      const response = await axios.post(`${BACKEND_URL}/api/user/google-login`, {
+        email: userInfo.email,
+        name: userInfo.name,
+        picture: userInfo.picture,
+        accessToken: accessToken,
       });
 
-      const { access_token } = tokenResponse.data;
-      sendAuth0TokenToBackend(access_token);
-
+      const { token, id, _id, uid } = response.data;
+      await AsyncStorage.setItem('userToken', token);
+      const resolvedUserId = id || _id || uid;
+      if (resolvedUserId) {
+        await AsyncStorage.setItem('userId', String(resolvedUserId));
+      }
+      await updateLastActivity();
+      Alert.alert('Login Success', 'Welcome back!');
+      navigation.replace('MainTabs');
     } catch (error) {
-      console.error('Failed to exchange code for token:', error.response?.data || error.message);
-      Alert.alert('Login Failed', 'Could not verify login with Auth0.');
-      hasHandledResponse.current = false;
+      console.error('Google login failed:', error.message);
+      Alert.alert('Login Failed', error.response?.data?.message || 'Could not log you in with Google.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const sendAuth0TokenToBackend = async (accessToken) => {
+  const handleGoogleSignIn = async () => {
     try {
-      const backendResponse = await axios.post(
-        `${BACKEND_URL}/api/auth/auth0-login`,
-        {},
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      
-      const { token } = backendResponse.data;
-      await AsyncStorage.setItem('userToken', token);
-      navigation.replace('MainTabs');
+      setIsLoading(true);
+      await googlePromptAsync({ useProxy: true });
     } catch (error) {
-      console.error('Backend login failed:', error);
-      Alert.alert('Login Failed', 'Could not log you into the application.');
-      hasHandledResponse.current = false;
+      console.error('Google login error:', error);
+      Alert.alert('Error', 'Failed to initiate Google Sign-In');
+      setIsLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingContainer}
       >
         <View style={styles.header}>
@@ -171,6 +134,7 @@ const LoginScreen = () => {
           onChangeText={setPassword}
           secureTextEntry
         />
+        
         <TouchableOpacity
           style={[styles.button, styles.manualLoginButton]}
           onPress={handleManualLogin}
@@ -179,23 +143,21 @@ const LoginScreen = () => {
           {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
         </TouchableOpacity>
 
-        {/* --- Separator --- */}
         <View style={styles.separatorContainer}>
           <View style={styles.separatorLine} />
           <Text style={styles.separatorText}>OR</Text>
           <View style={styles.separatorLine} />
         </View>
 
-        {/* --- Social Login Button --- */}
         <TouchableOpacity
-          style={[styles.button, styles.socialLoginButton]}
-          onPress={() => {
-            hasHandledResponse.current = false;
-            promptAsync();
-          }}
-          disabled={!request || isLoading}
+          style={[styles.button, styles.googleButton]}
+          onPress={handleGoogleSignIn}
+          disabled={!googleRequest || isLoading}
         >
-          <Text style={styles.buttonText}>Continue with Google, Facebook...</Text>
+          <View style={styles.googleButtonContent}>
+            <FontAwesome name="google" size={20} color="#fff" style={styles.googleIcon} />
+            <Text style={styles.buttonText}>Continue with Google</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -206,7 +168,6 @@ const LoginScreen = () => {
             Don't have an account? <Text style={styles.signUpLink}>Sign Up</Text>
           </Text>
         </TouchableOpacity>
-
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -235,10 +196,19 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   manualLoginButton: {
-    backgroundColor: '#00B8A9',
+    backgroundColor: '#007AFF',
   },
-  socialLoginButton: {
-    backgroundColor: '#4285F4',
+  googleButton: {
+    backgroundColor: '#DB4437',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  googleIcon: {
+    marginRight: 10,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -269,7 +239,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   signUpLink: {
-    color: '#00B8A9',
+    color: '#007AFF',
     fontWeight: 'bold',
   },
 });

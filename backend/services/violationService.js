@@ -3,21 +3,6 @@
 const { db, admin } = require("../firebase");
 const violationsCollection = db.collection("violations");
 
-// In-memory cache to reduce Firestore reads (resets on new violations or server restart)
-let _summaryCache = null;
-let _statsCache = null;
-let _cacheTimestamp = 0;
-const CACHE_TTL = 30000; // 30 seconds
-
-function invalidateCache() {
-  _summaryCache = null;
-  _statsCache = null;
-  _cacheTimestamp = 0;
-}
-function isCacheValid() {
-  return (Date.now() - _cacheTimestamp) < CACHE_TTL;
-}
-
 /**
  * Create a new violation
  */
@@ -40,60 +25,117 @@ async function createViolation(violationData) {
 
   const docRef = await violationsCollection.add(newViolation);
   const doc = await docRef.get();
-  invalidateCache(); // Clear cache when new violation added
   return { id: docRef.id, ...doc.data() };
 }
 
 /**
- * Get all violations
+ * Get all violations — no composite index needed (filter in memory)
  */
 async function getAllViolations(filters = {}) {
-  let query = violationsCollection.orderBy("createdAt", "desc");
+  let query = violationsCollection;
 
+  // Apply single-field filters only (avoids composite index requirement)
   if (filters.deviceKey) {
     query = query.where("deviceKey", "==", filters.deviceKey);
-  }
-
-  if (filters.type) {
+  } else if (filters.type) {
     query = query.where("type", "==", filters.type);
-  }
-
-  if (filters.status) {
+  } else if (filters.status) {
     query = query.where("status", "==", filters.status);
   }
 
-  if (filters.limit) {
-    query = query.limit(filters.limit);
-  }
-
   const snapshot = await query.get();
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // In-memory filtering for remaining filters
+  if (filters.deviceKey && filters.type) results = results.filter(r => r.type === filters.type);
+  if (filters.deviceKey && filters.status) results = results.filter(r => r.status === filters.status);
+
+  // Sort newest first
+  results.sort((a, b) => {
+    const ta = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+    const tb = b.createdAt?._seconds || b.createdAt?.seconds || 0;
+    return tb - ta;
+  });
+
+  if (filters.limit) results = results.slice(0, filters.limit);
+  return results;
 }
 
 /**
- * Get violations by device key (with pagination)
+ * Get violations by device key — with pagination support
  */
 async function getViolationsByDevice(deviceKey, limit = 50, page = 1) {
-  // Get all matching docs for this device to support proper pagination
   const snapshot = await violationsCollection
     .where("deviceKey", "==", deviceKey)
     .get();
 
-  // Sort in memory
-  const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  const allViolations = snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
     .sort((a, b) => {
-      const timeA = a.createdAt?._seconds || 0;
-      const timeB = b.createdAt?._seconds || 0;
+      const timeA = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?._seconds || b.createdAt?.seconds || 0;
       return timeB - timeA;
     });
 
-  const total = all.length;
+  const total = allViolations.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  const safePage = Math.min(page, totalPages);
+  const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * limit;
-  const violations = all.slice(start, start + limit);
+  const violations = allViolations.slice(start, start + limit);
 
-  return { violations, total, page: safePage, limit, totalPages };
+  return { violations, total, page: safePage, totalPages };
+}
+
+/**
+ * Get violations grouped by bus for the summary page
+ */
+async function getSummaryByBus() {
+  const snapshot = await violationsCollection.get();
+
+  const busMap = {};
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTs = today.getTime() / 1000;
+
+  snapshot.docs.forEach(doc => {
+    const v = { id: doc.id, ...doc.data() };
+    const key = v.deviceKey || v.busNumber || 'UNKNOWN';
+
+    if (!busMap[key]) {
+      busMap[key] = {
+        deviceKey: v.deviceKey || '',
+        busNumber: v.busNumber || v.deviceKey || 'UNKNOWN',
+        routeNumber: v.routeNumber || '',
+        totalViolations: 0,
+        todayCount: 0,
+        pendingCount: 0,
+        byType: {},
+        bySeverity: {},
+        latestViolation: null,
+        latestTimestamp: 0,
+      };
+    }
+
+    const entry = busMap[key];
+    entry.totalViolations++;
+
+    const vTs = v.createdAt?._seconds || v.createdAt?.seconds || 0;
+    if (vTs >= todayTs) entry.todayCount++;
+    if (v.status === 'pending') entry.pendingCount++;
+
+    const t = v.type || 'UNKNOWN';
+    entry.byType[t] = (entry.byType[t] || 0) + 1;
+
+    const sev = v.severity || 'MEDIUM';
+    entry.bySeverity[sev] = (entry.bySeverity[sev] || 0) + 1;
+
+    if (vTs > entry.latestTimestamp) {
+      entry.latestTimestamp = vTs;
+      entry.latestViolation = { id: v.id, type: t, severity: sev, createdAt: v.createdAt };
+    }
+  });
+
+  return Object.values(busMap).sort((a, b) => b.totalViolations - a.totalViolations);
 }
 
 /**
@@ -114,7 +156,6 @@ async function updateViolationStatus(violationId, status, notes = '') {
 
   if (!doc.exists) return null;
 
-  invalidateCache(); // Clear cache when violation updated
   await docRef.update({
     status,
     notes,
@@ -129,11 +170,6 @@ async function updateViolationStatus(violationId, status, notes = '') {
  * Get violation statistics
  */
 async function getViolationStats(deviceKey = null) {
-  // Return cached result if valid and no device filter
-  if (!deviceKey && _statsCache && isCacheValid()) {
-    return _statsCache;
-  }
-
   let query = violationsCollection;
 
   if (deviceKey) {
@@ -167,79 +203,7 @@ async function getViolationStats(deviceKey = null) {
     }
   });
 
-  if (!deviceKey) {
-    _statsCache = stats;
-    _cacheTimestamp = Date.now();
-  }
   return stats;
-}
-
-/**
- * Get violation summary grouped by bus
- * Returns: [ { busNumber, routeNumber, deviceKey, totalViolations, todayCount, byType, latestViolation } ]
- */
-async function getViolationSummaryByBus() {
-  // Return cached result if valid
-  if (_summaryCache && isCacheValid()) {
-    return _summaryCache;
-  }
-
-  const snapshot = await violationsCollection.get();
-
-  const busMap = {};
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  snapshot.docs.forEach(doc => {
-    const d = doc.data();
-    const bus = d.busNumber || d.deviceKey || 'UNKNOWN';
-
-    if (!busMap[bus]) {
-      busMap[bus] = {
-        busNumber: d.busNumber || 'UNKNOWN',
-        routeNumber: d.routeNumber || '',
-        deviceKey: d.deviceKey || '',
-        totalViolations: 0,
-        todayCount: 0,
-        pendingCount: 0,
-        byType: {},
-        bySeverity: {},
-        latestViolation: null,
-        latestTimestamp: 0,
-      };
-    }
-
-    const entry = busMap[bus];
-    entry.totalViolations++;
-
-    // Count by type
-    if (d.type) entry.byType[d.type] = (entry.byType[d.type] || 0) + 1;
-
-    // Count by severity
-    const sev = d.severity || d.details?.severity || 'MEDIUM';
-    entry.bySeverity[sev] = (entry.bySeverity[sev] || 0) + 1;
-
-    // Count pending
-    if (d.status === 'pending') entry.pendingCount++;
-
-    // Count today
-    if (d.createdAt && d.createdAt.toDate && d.createdAt.toDate() >= today) {
-      entry.todayCount++;
-    }
-
-    // Track latest violation
-    const ts = d.createdAt?._seconds || d.createdAt?.seconds || 0;
-    if (ts > entry.latestTimestamp) {
-      entry.latestTimestamp = ts;
-      entry.latestViolation = { id: doc.id, type: d.type, severity: sev, createdAt: d.createdAt };
-    }
-  });
-
-  // Convert to array sorted by totalViolations desc
-  const result = Object.values(busMap).sort((a, b) => b.totalViolations - a.totalViolations);
-  _summaryCache = result;
-  _cacheTimestamp = Date.now();
-  return result;
 }
 
 /**
@@ -252,7 +216,6 @@ async function deleteViolation(violationId) {
   if (!doc.exists) return null;
 
   await docRef.delete();
-  invalidateCache(); // Clear cache when violation deleted
   return true;
 }
 
@@ -260,9 +223,9 @@ module.exports = {
   createViolation,
   getAllViolations,
   getViolationsByDevice,
+  getSummaryByBus,
   getViolationById,
   updateViolationStatus,
   getViolationStats,
-  getViolationSummaryByBus,
   deleteViolation
 };
