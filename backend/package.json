@@ -7,6 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed": "node database/seeders/runAllSeeders.js",
+    "simulate:all-buses": "node scripts/simulateAllBusesOnRoutes.js",
+    "semulate:all-buses": "node scripts/simulateAllBusesOnRoutes.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

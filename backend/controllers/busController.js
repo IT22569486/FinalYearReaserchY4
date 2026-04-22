@@ -23,7 +23,7 @@ exports.getBusById = async (req, res) => {
 exports.createBus = async (req, res) => {
   try {
     const newBus = await busService.createBus(req.body);
-    // req.io.emit("busCreated", newBus);
+    req.io.emit("busCreated", newBus);
     res.status(201).json(newBus);
   } catch (err) {
     res.status(500).json({ error: "Error creating bus", details: err.message });
@@ -51,7 +51,7 @@ exports.updateOccupancy = async (req, res) => {
     const updated = await busService.updateBusOccupancy(req.params.busId, req.body.occupancy);
     if (!updated) return res.status(404).json({ message: "Bus not found" });
 
-    // req.io.emit("busUpdate", updated);
+    req.io.emit("busUpdate", updated);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: "Error updating occupancy", details: err.message });
@@ -63,7 +63,7 @@ exports.updateBus = async (req, res) => {
     const updated = await busService.updateBus(req.params.busId, req.body);
     if (!updated) return res.status(404).json({ message: "Bus not found" });
 
-    // req.io.emit("busUpdated", updated);
+    req.io.emit("busUpdated", updated);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: "Error updating bus", details: err.message });
@@ -75,7 +75,7 @@ exports.deleteBus = async (req, res) => {
     const deleted = await busService.deleteBus(req.params.busId);
     if (!deleted) return res.status(404).json({ message: "Bus not found" });
 
-    // req.io.emit("busDeleted", { busId: req.params.busId });
+    req.io.emit("busDeleted", { busId: req.params.busId });
     res.json({ message: "Bus deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: "Error deleting bus", details: err.message });

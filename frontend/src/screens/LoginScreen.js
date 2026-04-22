@@ -54,7 +54,7 @@ const LoginScreen = () => {
       Alert.alert('Login Success');
       navigation.replace('MainTabs');
     } catch (error) {
-      console.error('Manual login failed:', error.response?.data || error.message);
+      // console.error('Manual login failed:', error.response?.data || error.message);
       Alert.alert('Login Failed', error.response?.data?.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);

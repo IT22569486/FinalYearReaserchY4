@@ -24,7 +24,10 @@ const busService = require('../services/busService');
 const busTripService = require('../services/busTripService');
 const busTripRecordService = require('../services/busTripRecordService');
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+// const BACKEND_URL = 'http://165.245.190.214:3000';
+const BACKEND_URL = 'http://192.168.1.2:3000';
+
+
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -198,7 +201,7 @@ const initializeSimulation = async () => {
     // Update Bus document with currentTrip
     await busService.updateBus(busId, {
       currentTrip: busTripId,  // Store the string tripId
-      status: 'Running',
+      status: 'in_transit',
       occupancy: currentOccupancy,
     });
 
@@ -282,6 +285,9 @@ const startBusMovement = async () => {
           longitude: location.longitude,
         },
         routeId: routeId,
+        route_id: routeId,
+        currentTrip: busTripId,
+        direction: direction === 'reverse' ? 1 : 0,
         status: 'in_transit',
         timestamp: new Date(),
         currentStop: currentStop.stopName,
@@ -306,7 +312,8 @@ const startBusMovement = async () => {
 
       // Emit via Socket.IO
       socket.emit('busLocationUpdate', busUpdate);
-
+    // // Update Bus document with currentTrip
+    //   await busService.updateBus(busId, busUpdate);
       traveledDistance += speedPerUpdate;
       await delay(updateInterval);
     }

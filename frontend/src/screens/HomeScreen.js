@@ -159,19 +159,6 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Live Tracking Card */}
-        <TouchableOpacity 
-          style={[styles.card, styles.liveTrackingCard]} 
-          onPress={() => navigation.navigate('LiveBusTracking')}
-        >
-          <Ionicons name="location" size={32} color="#10B981" />
-          <View style={styles.liveTrackingText}>
-            <Text style={styles.liveTrackingTitle}>Live Bus Tracking</Text>
-            <Text style={styles.liveTrackingSubtitle}>View all buses on map in real-time</Text>
-          </View>
-          <Ionicons name="chevron-forward-outline" size={24} color="#10B981" />
-        </TouchableOpacity>
-
         {/* Animated Carousel */}
         <View style={styles.carouselContainer}>
           <Ionicons name={carouselTips[carouselIndex].icon} size={32} color="#007AFF" style={{marginBottom: 8}} />
@@ -209,76 +196,6 @@ const HomeScreen = () => {
           </View>
           <Ionicons name="chevron-forward-outline" size={24} color="#C7C7CC" />
         </TouchableOpacity>
-
-        {/* Bus Safety Section */}
-        <View style={styles.sectionHeader}>
-          <Ionicons name="shield-checkmark-outline" size={22} color="#333" />
-          <Text style={styles.sectionTitle}>Bus Safety</Text>
-          <TouchableOpacity style={styles.changeBusBtn} onPress={openBusPicker}>
-            <Ionicons name="swap-horizontal-outline" size={18} color="#007AFF" />
-            <Text style={styles.changeBusText}>{activeBusId ? 'Change' : 'Select Bus'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Bus Picker Dropdown */}
-        {showBusPicker && (
-          <View style={styles.pickerCard}>
-            <View style={styles.pickerSearchRow}>
-              <Ionicons name="search-outline" size={18} color="#999" />
-              <TextInput
-                style={styles.pickerInput}
-                placeholder="Search by bus ID or route..."
-                value={busSearch}
-                onChangeText={setBusSearch}
-                autoFocus
-              />
-              <TouchableOpacity onPress={() => setShowBusPicker(false)}>
-                <Ionicons name="close-circle" size={20} color="#aaa" />
-              </TouchableOpacity>
-            </View>
-            {loadingBuses ? (
-              <ActivityIndicator style={{ padding: 16 }} color="#007AFF" />
-            ) : filteredBuses.length === 0 ? (
-              <Text style={styles.noBusesText}>No buses found</Text>
-            ) : (
-              <ScrollView style={styles.busList} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                {filteredBuses.map((item) => {
-                  const itemId = item.busId || item.vehicle_id || item._id;
-                  return (
-                    <TouchableOpacity key={itemId} style={styles.busItem} onPress={() => selectBus(item)}>
-                      <Ionicons name="bus-outline" size={20} color="#007AFF" />
-                      <View style={styles.busItemText}>
-                        <Text style={styles.busItemId}>{item.vehicle_id || item.busId || item.busNumber}</Text>
-                        {(item.route_id || item.routeNumber) ? (
-                          <Text style={styles.busItemRoute}>{item.route_id || ('Route ' + item.routeNumber)}</Text>
-                        ) : null}
-                      </View>
-                      {activeBusId === itemId && (
-                        <Ionicons name="checkmark-circle" size={20} color="#34C759" />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-        )}
-
-        {activeBusId ? (
-          <BusSafetyCard busId={activeBusId} />
-        ) : (
-          <View style={[styles.card, styles.emptySafetyCard]}>
-            <Ionicons name="shield-outline" size={40} color="#ccc" />
-            <Text style={styles.emptySafetyTitle}>No Bus Selected</Text>
-            <Text style={styles.emptySafetySubtitle}>
-              Tap "Select Bus" above to choose a bus and view its live safety score
-            </Text>
-            <TouchableOpacity style={styles.emptySafetyButton} onPress={openBusPicker}>
-              <Text style={styles.emptySafetyButtonText}>Select a Bus</Text>
-              <Ionicons name="arrow-forward" size={16} color="#007AFF" />
-            </TouchableOpacity>
-          </View>
-        )}
 
       </ScrollView>
     </SafeAreaView>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +14,7 @@ import { updateLastActivity } from '../utils/authUtils';
 import { calculateBusPredictions, getLastThreeRecordsOfTrip, getDistanceKm } from '../services/predictionService';
 
 const socket = io(BACKEND_URL);
+const REALTIME_STALE_GUARD_MS = 15000;
 
 const BusRoutesScreen = () => {
   const [allBuses, setAllBuses] = useState([]);
@@ -29,8 +30,72 @@ const BusRoutesScreen = () => {
   const [busArrivalTimes, setBusArrivalTimes] = useState({});
   const [busPassengerCounts, setBusPassengerCounts] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
+  const refreshIntervalRef = useRef(null);
   const navigation = useNavigation();
   const { refreshSession } = useSession();
+
+  const parseTimestampMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const getBusIdentifiers = (bus) => {
+    if (!bus) return [];
+    return [bus.busId, bus.bus_id, bus.id, bus.vehicle_id].filter(Boolean);
+  };
+
+  const upsertBusList = (prevBuses, incomingBus, { isRealtime = false } = {}) => {
+    if (!incomingBus) return prevBuses;
+
+    const incomingIds = getBusIdentifiers(incomingBus);
+    if (incomingIds.length === 0) return prevBuses;
+
+    const index = prevBuses.findIndex(
+      (bus) => getBusIdentifiers(bus).some((id) => incomingIds.includes(id))
+    );
+
+    if (index === -1) {
+      return [
+        ...prevBuses,
+        {
+          ...incomingBus,
+          ...(isRealtime ? { _lastRealtimeUpdateMs: Date.now() } : {}),
+        },
+      ];
+    }
+
+    const existingBus = prevBuses[index];
+    const preservedBusId =
+      existingBus.busId || existingBus.bus_id || incomingBus.busId || incomingBus.bus_id;
+
+    const existingRealtimeMs = existingBus._lastRealtimeUpdateMs || 0;
+    const incomingMs = parseTimestampMs(
+      incomingBus.timestamp || incomingBus.updatedAt || incomingBus.last_update
+    );
+    const realtimeStillFresh = Date.now() - existingRealtimeMs <= REALTIME_STALE_GUARD_MS;
+    const shouldPreserveLocation = !isRealtime && realtimeStillFresh && (!incomingMs || incomingMs < existingRealtimeMs);
+
+    const merged = {
+      ...existingBus,
+      ...incomingBus,
+      ...(preservedBusId ? { busId: preservedBusId } : {}),
+      _lastRealtimeUpdateMs: isRealtime
+        ? Date.now()
+        : Math.max(existingRealtimeMs, incomingMs || 0) || undefined,
+    };
+
+    if (shouldPreserveLocation) {
+      merged.location = existingBus.location;
+      merged.latitude = existingBus.latitude;
+      merged.longitude = existingBus.longitude;
+    }
+
+    const next = [...prevBuses];
+    next[index] = merged;
+    return next;
+  };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -64,7 +129,14 @@ const BusRoutesScreen = () => {
             apiClient.get('/api/bus-trip-records'),
           ]);
           setRoutes(routesRes.data);
-          setAllBuses(busesRes.data);
+          setAllBuses((prevBuses) => {
+            const incoming = busesRes.data || [];
+            if (!Array.isArray(incoming) || incoming.length === 0) return prevBuses;
+            return incoming.reduce(
+              (acc, bus) => upsertBusList(acc, bus, { isRealtime: false }),
+              prevBuses
+            );
+          });
           setBusTrips(busTripsRes.data);
           setBusTripRecords(busTripRecordsRes.data);
           setDataLoaded(true);
@@ -76,27 +148,94 @@ const BusRoutesScreen = () => {
 
       // Await the fetch to ensure data is loaded before proceeding
       await fetchData();
-
-      socket.on('busLocationUpdate', (updatedBus) => {
-        setAllBuses((prevBuses) => {
-          const index = prevBuses.findIndex((bus) => bus.busId === updatedBus.busId);
-
-          if (index !== -1) {
-            // Merge the update with existing bus data to preserve all fields
-            const newBuses = [...prevBuses];
-            newBuses[index] = { ...prevBuses[index], ...updatedBus };
-            return newBuses;
-          }
-          // If bus not found in list, add it
-          return [...prevBuses, updatedBus];
-        });
-      });
-
-      return () => socket.off('busLocationUpdate');
     } catch (error) {
       console.error('Error initializing BusRoutesScreen:', error);
     }
   };
+
+  useEffect(() => {
+    const refreshBuses = async () => {
+      try {
+        const busesRes = await apiClient.get('/api/bus');
+        setAllBuses((prevBuses) => {
+          const incoming = busesRes.data || [];
+          if (!Array.isArray(incoming) || incoming.length === 0) return prevBuses;
+
+          return incoming.reduce(
+            (acc, bus) => upsertBusList(acc, bus, { isRealtime: false }),
+            prevBuses
+          );
+        });
+      } catch (err) {
+        console.error('Live bus refresh failed:', err?.message || err);
+      }
+    };
+
+    const startRefresh = () => {
+      if (refreshIntervalRef.current) return;
+      refreshIntervalRef.current = setInterval(refreshBuses, 5000);
+    };
+
+    const stopRefresh = () => {
+      if (!refreshIntervalRef.current) return;
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
+    };
+
+    const unsubscribeFocus = navigation.addListener('focus', startRefresh);
+    const unsubscribeBlur = navigation.addListener('blur', stopRefresh);
+
+    return () => {
+      unsubscribeFocus();
+      unsubscribeBlur();
+      stopRefresh();
+    };
+  }, [navigation]);
+
+  useEffect(() => {
+    const upsertBus = (updatedBus, options = {}) => {
+      setAllBuses((prevBuses) => upsertBusList(prevBuses, updatedBus, options));
+    };
+
+    const handleBusLocationUpdate = (payload) => upsertBus(payload, { isRealtime: true });
+    const handleBusUpdated = (payload) => upsertBus(payload, { isRealtime: false });
+    const handleBusUpdate = (payload) => upsertBus(payload, { isRealtime: false });
+    const handleBusCreated = (payload) => upsertBus(payload, { isRealtime: false });
+    const handleBusDeleted = (payload) => {
+      const deletedIds = getBusIdentifiers(payload);
+      if (deletedIds.length === 0) return;
+
+      setAllBuses((prevBuses) =>
+        prevBuses.filter((bus) => !getBusIdentifiers(bus).some((id) => deletedIds.includes(id)))
+      );
+    };
+
+    const handleDeviceStatusUpdate = (payload) => {
+      const deviceBusId = payload?.deviceKey;
+      if (!deviceBusId) return;
+
+      upsertBus({
+        busId: deviceBusId,
+        status: payload.status,
+      });
+    };
+
+    socket.on('busLocationUpdate', handleBusLocationUpdate);
+    socket.on('busUpdated', handleBusUpdated);
+    socket.on('busUpdate', handleBusUpdate);
+    socket.on('busCreated', handleBusCreated);
+    socket.on('busDeleted', handleBusDeleted);
+    socket.on('deviceStatusUpdate', handleDeviceStatusUpdate);
+
+    return () => {
+      socket.off('busLocationUpdate', handleBusLocationUpdate);
+      socket.off('busUpdated', handleBusUpdated);
+      socket.off('busUpdate', handleBusUpdate);
+      socket.off('busCreated', handleBusCreated);
+      socket.off('busDeleted', handleBusDeleted);
+      socket.off('deviceStatusUpdate', handleDeviceStatusUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedRoute) {

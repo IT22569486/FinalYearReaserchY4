@@ -128,16 +128,44 @@ const MapViewComponent = ({
         if (isNaN(lat) || isNaN(lng)) return null; // skip buses with no/bad location
         const route = routes.find(r => r.id === bus.routeId);
         const routeName = route ? route.name : 'Unknown Route';
+        const routeStartStop = route?.path?.[0]?.stopName || '';
+        const routeEndStop = route?.path?.[route?.path?.length - 1]?.stopName || '';
+        const rawDirection = String(bus.direction ?? '').toLowerCase();
+        const isReverseDirection = rawDirection === '1' || rawDirection === 'reverse' || rawDirection === 'backward';
+        const fromStop =
+          bus.from ||
+          bus.origin ||
+          bus.startStop ||
+          bus.start_stop ||
+          (isReverseDirection ? routeEndStop : routeStartStop) ||
+          'N/A';
+        const toStop =
+          bus.to ||
+          bus.destination ||
+          bus.endStop ||
+          bus.end_stop ||
+          (isReverseDirection ? routeStartStop : routeEndStop) ||
+          'N/A';
+        const lastPassengerStop =
+          bus.lastPassengerStop ||
+          bus.last_passenger_stop ||
+          bus.currentStop ||
+          bus.current_stop ||
+          'N/A';
+        const nextStop = bus.nextStop || bus.next_stop || 'N/A';
+        const currentLoad = bus.occupancy ?? bus.passenger_count ?? 0;
+        const currentLoadText = bus.capacity ? `${currentLoad}/${bus.capacity}` : `${currentLoad}`;
         const arrivalTime = passengerArrivalTimes[bus.busId];
         const passengerCount = passengerCounts[bus.busId];
-        const isLive = !!bus.isLive;
-        
+        const isLive = bus.status === 'in_transit' || bus.status === 'Running';
         return (
           <Marker
             key={bus.busId || bus.bus_id}
             coordinate={{ latitude: lat, longitude: lng }}
             title={`Bus ${bus.busId || bus.bus_id}`}
             zIndex={150}
+            tracksViewChanges={true}
+            tracksInfoWindowChanges={true}
           >
             {/* Bus icon with optional LIVE badge */}
             <View style={styles.busMarkerContainer}>
@@ -170,7 +198,11 @@ const MapViewComponent = ({
                   )}
                 </View>
                 <Text style={styles.calloutBusId}>{`Bus ${bus.busId || bus.bus_id}`}</Text>
-                <Text style={styles.calloutText}>{`Status: ${bus.status || 'online'}`}</Text>
+                <Text style={styles.calloutText}>{`From: ${fromStop} To: ${toStop}`}</Text>
+                <Text style={styles.calloutText}>{`Bus Status: ${bus.status || 'online'}`}</Text>
+                <Text style={styles.calloutText}>{`Current Load: ${currentLoadText}`}</Text>
+                <Text style={styles.calloutText}>{`Last passenger stop: ${lastPassengerStop}`}</Text>
+                <Text style={styles.calloutText}>{`Next stop: ${nextStop}`}</Text>
                 {isLive ? (
                   <>
                     <Text style={styles.calloutText}>{`Speed: ${Math.round(bus.speed || 0)} km/h`}</Text>
@@ -179,9 +211,7 @@ const MapViewComponent = ({
                       <Text style={styles.calloutText}>{`Weight: ${Math.round(bus.total_weight)} kg`}</Text>
                     )}
                   </>
-                ) : (
-                  <Text style={styles.calloutText}>{`Current Load: ${bus.occupancy}/${bus.capacity}`}</Text>
-                )}
+                ) : null}
                 {passengerCount !== undefined && (
                   <Text style={styles.calloutText}>{`Est. Passengers at Origin: ${passengerCount}`}</Text>
                 )}
