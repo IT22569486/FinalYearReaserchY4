@@ -10,9 +10,11 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import RNPickerSelect from 'react-native-picker-select';
 import apiClient from '../api/axiosConfig';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
@@ -26,6 +28,17 @@ const COLORS = {
   danger: '#DC3545',
 };
 
+const BLOOD_GROUP_OPTIONS = [
+  { label: 'A+', value: 'A+' },
+  { label: 'A-', value: 'A-' },
+  { label: 'B+', value: 'B+' },
+  { label: 'B-', value: 'B-' },
+  { label: 'AB+', value: 'AB+' },
+  { label: 'AB-', value: 'AB-' },
+  { label: 'O+', value: 'O+' },
+  { label: 'O-', value: 'O-' },
+];
+
 const ProfileScreen = () => {
   const [passenger, setPassenger] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -35,6 +48,7 @@ const ProfileScreen = () => {
     dob: '',
     bloodGroup: '',
   });
+  const [showDobPicker, setShowDobPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigation = useNavigation();
   const { refreshSession, handleLogout: sessionLogout } = useSession();
@@ -116,6 +130,27 @@ const ProfileScreen = () => {
     }
   };
 
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getDobDateValue = () => {
+    if (!formData.dob) return new Date();
+    const [year, month, day] = formData.dob.split('-').map(Number);
+    if (!year || !month || !day) return new Date();
+    return new Date(year, month - 1, day);
+  };
+
+  const handleDobChange = (_event, selectedDate) => {
+    setShowDobPicker(false);
+    if (selectedDate) {
+      setFormData((prev) => ({ ...prev, dob: formatDate(selectedDate) }));
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -168,20 +203,35 @@ const ProfileScreen = () => {
             />
 
             <Text style={styles.editLabel}>Date of Birth</Text>
-            <TextInput
-              style={styles.editInput}
-              placeholder="YYYY-MM-DD"
-              value={formData.dob}
-              onChangeText={(text) => setFormData((prev) => ({ ...prev, dob: text }))}
-            />
+            <TouchableOpacity style={styles.editInput} onPress={() => setShowDobPicker(true)}>
+              <Text style={[styles.datePickerText, !formData.dob && styles.datePickerPlaceholder]}>
+                {formData.dob || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
+            {showDobPicker && (
+              <DateTimePicker
+                value={getDobDateValue()}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={handleDobChange}
+              />
+            )}
 
             <Text style={styles.editLabel}>Blood Group</Text>
-            <TextInput
-              style={styles.editInput}
-              placeholder="A+, B+, O-, etc."
-              value={formData.bloodGroup}
-              onChangeText={(text) => setFormData((prev) => ({ ...prev, bloodGroup: text }))}
-            />
+            <View style={styles.pickerWrapper}>
+              <RNPickerSelect
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, bloodGroup: value || '' }))
+                }
+                items={BLOOD_GROUP_OPTIONS}
+                value={formData.bloodGroup || null}
+                placeholder={{ label: 'Select blood group', value: null }}
+                useNativeAndroidPickerStyle={false}
+                style={pickerSelectStyles}
+                Icon={() => <Ionicons name="chevron-down" size={20} color={COLORS.darkGray} />}
+              />
+            </View>
           </View>
         ) : (
           <>
@@ -326,6 +376,13 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     backgroundColor: COLORS.white,
   },
+  datePickerText: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  datePickerPlaceholder: {
+    color: COLORS.darkGray,
+  },
   buttonContainer: {
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -412,6 +469,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  pickerWrapper: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    backgroundColor: COLORS.white,
+    marginBottom: 2,
+  },
+});
+
+const pickerSelectStyles = StyleSheet.create({
+  inputIOS: {
+    fontSize: 16,
+    color: COLORS.text,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingRight: 36,
+  },
+  inputAndroid: {
+    fontSize: 16,
+    color: COLORS.text,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingRight: 36,
+  },
+  placeholder: {
+    color: COLORS.darkGray,
+  },
+  iconContainer: {
+    top: 12,
+    right: 12,
   },
 });
 

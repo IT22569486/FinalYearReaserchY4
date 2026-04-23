@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   },
   liveBadge: {
     position: 'absolute',
-    top: -6,
+    top: -0.01,
     right: -10,
     backgroundColor: '#00C853',
     borderRadius: 6,

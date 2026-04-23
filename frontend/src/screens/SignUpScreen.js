@@ -66,7 +66,22 @@ const SignUpScreen = () => {
           <TextInput style={styles.input} placeholder="Email Address*" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
           <TextInput style={styles.input} placeholder="Password*" value={password} onChangeText={setPassword} secureTextEntry />
           <TextInput style={styles.input} placeholder="Mobile Number*" value={mobileNo} onChangeText={setMobileNo} keyboardType="phone-pad" />
-          <TextInput style={styles.input} placeholder="Date of Birth (YYYY-MM-DD)" value={dob} onChangeText={setDob} />
+          <TouchableOpacity onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
+            <View style={styles.input}>
+              <Text style={{ color: dob ? '#000' : '#999', fontSize: 16 }}>
+                {dob || 'Date of Birth (YYYY-MM-DD)'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={dob ? new Date(dob) : new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              maximumDate={new Date()}
+              onChange={handleDobChange}
+            />
+          )}
           <TextInput style={styles.input} placeholder="NIC Number" value={nic} onChangeText={setNic} />
           <TextInput style={styles.input} placeholder="Blood Group" value={bloodGroup} onChangeText={setBloodGroup} />
 
