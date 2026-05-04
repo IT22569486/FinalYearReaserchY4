@@ -28,12 +28,12 @@ const getBusTripRecords = async () => {
     }
 };
 
-const getLastThreeRecordsOfTrip = async (tripId) => {
+const getLastFiveRecordsOfTrip = async (tripId) => {
     try {
         const snapshot = await db.collection('bus_trip_records')
             .where('Trip_ID', '==', parseInt(tripId))
             .orderBy('Stamp', 'desc')
-            .limit(3)
+            .limit(5)
             .get();
         const records = [];
         snapshot.forEach(doc => {
@@ -42,7 +42,7 @@ const getLastThreeRecordsOfTrip = async (tripId) => {
         });
         return records;
     } catch (error) {
-        throw new Error('Error getting last three records of trip: ' + error.message);
+        throw new Error('Error getting last five records of trip: ' + error.message);
     }
 };
 
@@ -172,7 +172,7 @@ const getRecordsByDateRange = async (startDate, endDate) => {
 module.exports = {
     addBusTripRecord,
     getBusTripRecords,
-    getLastThreeRecordsOfTrip,
+    getLastFiveRecordsOfTrip,
     getRecordsByBusId,
     getLatestRecordByBusId,
     getRecordsByDirection,

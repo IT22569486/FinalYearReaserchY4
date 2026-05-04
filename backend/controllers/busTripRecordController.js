@@ -18,10 +18,10 @@ const getBusTripRecords = async (req, res) => {
     }
 };
 
-const getLastThreeRecordsOfTrip = async (req, res) => {
+const getLastFiveRecordsOfTrip = async (req, res) => {
     try {
         const { tripId } = req.params;
-        const records = await busTripRecordService.getLastThreeRecordsOfTrip(tripId);
+        const records = await busTripRecordService.getLastFiveRecordsOfTrip(tripId);
         res.status(200).json(records);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -106,7 +106,7 @@ const getRecordsByDateRange = async (req, res) => {
 module.exports = {
     addBusTripRecord,
     getBusTripRecords,
-    getLastThreeRecordsOfTrip,
+    getLastFiveRecordsOfTrip,
     getRecordsByBusId,
     getLatestRecordByBusId,
     getRecordsByDirection,

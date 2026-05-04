@@ -29,7 +29,7 @@ router.get('/bus/:busId/direction/:direction', busTripRecordController.getRecord
 // GET: All records for a bus
 router.get('/bus/:busId', busTripRecordController.getRecordsByBusId);
 
-// GET: Last three records of a trip
-router.get('/trip/:tripId/last-three', busTripRecordController.getLastThreeRecordsOfTrip);
+// GET: Last five records of a trip
+router.get('/trip/:tripId/last-five', busTripRecordController.getLastFiveRecordsOfTrip);
 
 module.exports = router;

@@ -2,10 +2,10 @@ import apiClient from '../api/axiosConfig';
 import { ML_BACKEND_URL } from '../config';
 import { getCurrentStopIndex, getRemainingStops } from '../utils/stopTrackingUtils';
 
-// Helper function to get the last 3 records of a trip from Firestore
-export const getLastThreeRecordsOfTrip = async (tripId) => {
+// Helper function to get the last 5 records of a trip from Firestore
+export const getLastFiveRecordsOfTrip = async (tripId) => {
   try {
-    const response = await apiClient.get(`/api/bus-trip-records/trip/${tripId}/last-three`);
+    const response = await apiClient.get(`/api/bus-trip-records/trip/${tripId}/last-five`);
     return response.data;
   } catch (error) {
     console.error('Error getting last three records of trip:', error);
@@ -93,8 +93,8 @@ const prepareSequenceFromRecords = (records, direction, routeName) => {
   let sequence = [];
 
   // Prepare sequence (pad if needed)
-  if (records.length < 3) {
-    for (let i = 0; i < 3 - records.length; i++) {
+  if (records.length < 5) {
+    for (let i = 0; i < 5 - records.length; i++) {
       sequence.push({ ...paddingRecord });
     }
     records.forEach(rec => {
