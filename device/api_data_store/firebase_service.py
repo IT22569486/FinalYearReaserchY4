@@ -6,8 +6,12 @@ from firebase_admin import credentials, firestore
 from datetime import datetime
 from pathlib import Path
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
+
+# Base URL for the backend API
+BACKEND_API_URL = "http://172.20.10.3:5000/api"
 
 
 class FirebaseService:
@@ -76,6 +80,10 @@ class FirebaseService:
                     update['routeId'] = telemetry['route_id']
                     update['routeNumber'] = telemetry['route_id']
                 doc.reference.update(update)
+                
+                # Also update backend
+                await self.update_bus_details_on_backend(bus_id, telemetry)
+                
                 return False
             else:
                 # First telemetry from this bus — create it
@@ -99,6 +107,31 @@ class FirebaseService:
         except Exception as e:
             logger.error(f"Error in ensure_bus_exists for {bus_id}: {e}")
             return False
+
+    async def update_bus_details_on_backend(self, bus_id: str, telemetry: dict):
+        """Update bus details on the backend via API call"""
+        try:
+            url = f"{BACKEND_API_URL}/buses/{bus_id}"
+            payload = {
+                'occupancy': telemetry.get('passenger_count', 0),
+                'speed': telemetry.get('speed', 0),
+                'status': 'active',
+                'location': {
+                    'lat': telemetry.get('latitude'),
+                    'lng': telemetry.get('longitude'),
+                    'latitude': telemetry.get('latitude'),
+                    'longitude': telemetry.get('longitude')
+                }
+            }
+            if telemetry.get('route_id'):
+                payload['routeId'] = telemetry['route_id']
+                payload['routeNumber'] = telemetry['route_id']
+
+            response = requests.put(url, json=payload, timeout=5)
+            response.raise_for_status()
+            logger.info(f"Successfully updated bus {bus_id} on backend")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to update bus details on backend for {bus_id}: {e}")
 
     # ==========================================
     # Bus Live Location Operations
