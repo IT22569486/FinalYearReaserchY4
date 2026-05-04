@@ -89,29 +89,31 @@ async function startMQTTBroker(mqttPort = 1883, wsPort = 8083) {
         console.log(`MQTT Message: ${topic}`);
 
         // Route messages based on topic
-        // IMPORTANT: /status must be checked BEFORE /safespeed because
-        // status topic is .../safespeed/status which matches both patterns
+        // IMPORTANT: Check specific patterns BEFORE generic includes checks
         try {
-            if (topic.includes('/dms/telemetry')) {
-                await handleDMSTelemetry(topic, payload);
-            } else if (topic.includes('/dms/event')) {
-                await handleDMSEvent(topic, payload);
-            } else if (topic.includes('/health')) {
-                await handleHealthUpdate(topic, payload);
-            } else if (topic.includes('/violation')) {
-                await handleViolation(topic, payload);
-            } else if (topic.includes('/status')) {
-                await handleStatusUpdate(topic, payload);
-            } else if (topic.includes('/telemetry') || topic.includes('/safespeed')) {
-                await handleTelemetry(topic, payload);
-            } else if (topic.includes('/component')) {
-                await handleComponentUpdate(topic, payload);
-            } else if (topic.match(/^bus\/[^\/]+\/gps$/)) {
+            // Check specific bus patterns first (most specific)
+            if (topic.match(/^bus\/[^\/]+\/gps$/)) {
                 await handleBusGPS(topic, payload);
             } else if (topic.match(/^bus\/[^\/]+\/passenger$/)) {
                 await handleBusPassenger(topic, payload);
             } else if (topic.match(/^bus\/[^\/]+\/telemetry$/)) {
                 await handleBusTelemetry(topic, payload);
+            } 
+            // Check DMS patterns next
+            else if (topic.includes('/dms/telemetry')) {
+                await handleDMSTelemetry(topic, payload);
+            } else if (topic.includes('/dms/event')) {
+                await handleDMSEvent(topic, payload);
+            } 
+            // Check health, violation, status patterns
+            else if (topic.includes('/health')) {
+                await handleHealthUpdate(topic, payload);
+            } else if (topic.includes('/violation')) {
+                await handleViolation(topic, payload);
+            } else if (topic.includes('/status')) {
+                await handleStatusUpdate(topic, payload);
+            } else if (topic.includes('/component')) {
+                await handleComponentUpdate(topic, payload);
             }
         } catch (err) {
             console.error(`Error handling MQTT message: ${err.message}`);
@@ -521,6 +523,7 @@ async function handleBusTelemetry(topic, payload) {
 
     try {
         const routeName = await getRouteName(route_id);
+        const now = new Date();
 
         // 1. Auto-create / update bus in 'buses' collection
         await ensureBusExists(busId, payload);
@@ -538,11 +541,27 @@ async function handleBusTelemetry(topic, payload) {
             total_weight: total_weight || 0,
             gps_valid: gps_valid !== false,
             status: 'online',
-            last_updated: new Date(),
+            last_updated: now,
             device_timestamp: timestamp,
         }, { merge: true });
 
-        // 3. Broadcast via Socket.IO
+        // 3. Store telemetry history for analytics
+        const historyRef = db.collection('bus_telemetry_history').doc();
+        await historyRef.set({
+            bus_id: busId,
+            route_id: route_id || null,
+            route_name: routeName,
+            latitude,
+            longitude,
+            speed: speed || 0,
+            passenger_count: passenger_count || 0,
+            total_weight: total_weight || 0,
+            gps_valid: gps_valid !== false,
+            timestamp: now,
+            device_timestamp: timestamp,
+        });
+
+        // 4. Broadcast via Socket.IO
         if (io) {
             const broadcastData = {
                 bus_id: busId,
@@ -556,7 +575,7 @@ async function handleBusTelemetry(topic, payload) {
                 total_weight: total_weight || 0,
                 gps_valid: gps_valid !== false,
                 location: { lat: latitude, lng: longitude },
-                timestamp: new Date().toISOString(),
+                timestamp: now.toISOString(),
             };
             io.emit('bus_location_update', broadcastData);
             io.to(busId).emit('bus_location_update', broadcastData);

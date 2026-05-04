@@ -11,7 +11,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # Base URL for the backend API
-BACKEND_API_URL = "http://172.20.10.3:5000/api"
+BACKEND_API_URL = "http://192.168.1.253:3000/api"
 
 
 class FirebaseService:

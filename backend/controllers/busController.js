@@ -1,5 +1,6 @@
 // controllers/busController.js
 const busService = require("../services/busService");
+const { db } = require("../firebase");
 
 exports.getBuses = async (req, res) => {
   try {
@@ -17,6 +18,75 @@ exports.getBusById = async (req, res) => {
     res.json(bus);
   } catch (err) {
     res.status(500).json({ error: "Error fetching bus", details: err.message });
+  }
+};
+
+exports.getBusTelemetry = async (req, res) => {
+  try {
+    const { busId } = req.params;
+    
+    // Get current live telemetry
+    const liveDoc = await db.collection('bus_live_locations').doc(busId).get();
+    
+    if (!liveDoc.exists) {
+      return res.status(404).json({ message: "No telemetry data found for this bus" });
+    }
+    
+    const telemetry = liveDoc.data();
+    res.json({
+      status: "success",
+      data: {
+        bus_id: telemetry.bus_id,
+        route_id: telemetry.route_id,
+        route_name: telemetry.route_name,
+        latitude: telemetry.latitude,
+        longitude: telemetry.longitude,
+        speed: telemetry.speed,
+        passenger_count: telemetry.passenger_count,
+        total_weight: telemetry.total_weight,
+        gps_valid: telemetry.gps_valid,
+        status: telemetry.status,
+        last_updated: telemetry.last_updated?.toDate?.() || telemetry.last_updated,
+        device_timestamp: telemetry.device_timestamp
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching telemetry", details: err.message });
+  }
+};
+
+exports.getBusTelemetryHistory = async (req, res) => {
+  try {
+    const { busId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 100, 1000);
+    
+    // Get telemetry history
+    const historyQuery = await db.collection('bus_telemetry_history')
+      .where('bus_id', '==', busId)
+      .orderBy('timestamp', 'desc')
+      .limit(limit)
+      .get();
+    
+    if (historyQuery.empty) {
+      return res.status(404).json({ message: "No telemetry history found for this bus" });
+    }
+    
+    const history = historyQuery.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+      };
+    });
+    
+    res.json({
+      status: "success",
+      bus_id: busId,
+      total_records: history.length,
+      data: history
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching telemetry history", details: err.message });
   }
 };
 

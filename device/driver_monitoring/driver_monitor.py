@@ -352,7 +352,7 @@ class DriverMonitor:
         broker = _cfg.mqtt_broker
         port = _cfg.mqtt_port
         client_id = f"{self.device_key}-DMS-{os.getpid()}"
-        self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
+        self.mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
         username = _cfg.mqtt_username
         password = _cfg.mqtt_password
         if username:
@@ -509,6 +509,9 @@ class DriverMonitor:
             if ONNX_YOLO_AVAILABLE and isinstance(self.yolo_model, OnnxYOLO):
                 boxes, scores, class_ids = self.yolo_model.detect(
                     frame, conf=YOLO_CONFIDENCE_THRESHOLD)
+                # Debug log detections
+                if len(class_ids) > 0:
+                    print(f"[DMS] Phone ONNX detections: ids={class_ids.tolist()} scores={scores.tolist()}")
                 for cls_id in class_ids:
                     if int(cls_id) == PHONE_CLASS_ID:
                         found = True
@@ -520,7 +523,9 @@ class DriverMonitor:
                 results = self.yolo_model(frame, verbose=False, imgsz=YOLO_IMGSZ)
                 for r in results:
                     for box in r.boxes:
-                        if int(box.cls[0]) == PHONE_CLASS_ID and float(box.conf[0]) > YOLO_CONFIDENCE_THRESHOLD:
+                        cls_id = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        if cls_id == PHONE_CLASS_ID and conf > YOLO_CONFIDENCE_THRESHOLD:
                             found = True
                             self.phone_detected = True
                             self.phone_timer = PHONE_DETECTION_DECAY
@@ -552,9 +557,26 @@ class DriverMonitor:
             if ONNX_YOLO_AVAILABLE and isinstance(self.seatbelt_model, OnnxYOLO):
                 boxes, scores, class_ids = self.seatbelt_model.detect(
                     frame, conf=SEATBELT_CONFIDENCE_THRESHOLD)
-                names = self.seatbelt_model.names
+                names = getattr(self.seatbelt_model, "names", {})
+                # Debug log
+                if len(class_ids) > 0:
+                    print(f"[DMS] Seatbelt ONNX detections: ids={class_ids.tolist()} scores={scores.tolist()}")
+
+                # Heuristic for custom 2-class seatbelt models without metadata
+                use_two_class_heuristic = (not names) and getattr(self.seatbelt_model, 'num_classes', None) == 2
+
                 for cls_id, conf in zip(class_ids, scores):
-                    label = names.get(int(cls_id), str(cls_id)).lower()
+                    cls = int(cls_id)
+                    if use_two_class_heuristic:
+                        # Assume class 0 = seatbelt present, class 1 = no_seatbelt
+                        if cls == 1:
+                            no_sb.append(float(conf))
+                        elif cls == 0:
+                            sb.append(float(conf))
+                        continue
+
+                    label = names.get(cls, str(cls)).lower() if isinstance(names, dict) else str(cls)
+                    label = label.lower()
                     # "no_seatbelt" / "no-seatbelt" but NOT "seatbelt" alone
                     if ("no" in label and ("seatbelt" in label or "belt" in label)) or label in ("no", "noseatbelt"):
                         no_sb.append(float(conf))
@@ -790,19 +812,65 @@ class DriverMonitor:
 
     # ---- main loop -----------------------------------------------------
 
+    def _open_camera_with_fallback(self):
+        """
+        Try to open CAMERA_SOURCE, with fallback to default camera (0) if it fails.
+        For network streams, skip them and use laptop camera directly.
+        """
+        # If configured source is a network stream, skip it and use laptop camera
+        if isinstance(CAMERA_SOURCE, str) and CAMERA_SOURCE.startswith(("http", "tcp", "rtsp")):
+            print(f"[DMS] Network stream configured: {CAMERA_SOURCE}")
+            print(f"[DMS] Switching to laptop camera (index 0)")
+            sources_to_try = [0]
+        else:
+            sources_to_try = [CAMERA_SOURCE]
+            # If primary source fails, try default camera as fallback
+            if CAMERA_SOURCE != 0:
+                sources_to_try.append(0)
+        
+        for source in sources_to_try:
+            try:
+                print(f"[DMS] Attempting to open camera: {source}")
+                cap = cv2.VideoCapture(source)
+                
+                if not cap.isOpened():
+                    print(f"[DMS] Failed to open: {source}")
+                    continue
+                
+                # Verify we can read a frame
+                ret, frame = cap.read()
+                if ret:
+                    print(f"[DMS] Successfully opened camera: {source}")
+                    return cap
+                else:
+                    print(f"[DMS] Camera opened but cannot read frames: {source}")
+                    cap.release()
+                    continue
+            
+            except Exception as e:
+                print(f"[DMS] Error opening {source}: {e}")
+                continue
+        
+        return None
+
     def run(self):
         """Open camera and run detection loop."""
         if not MEDIAPIPE_AVAILABLE or not SCIPY_AVAILABLE:
             print("[DMS] ERROR: mediapipe and scipy are required.")
             return
 
-        cap = cv2.VideoCapture(CAMERA_SOURCE)
-        if not cap.isOpened():
-            print(f"[DMS] ERROR: Could not open camera/stream: {CAMERA_SOURCE}")
+        cap = self._open_camera_with_fallback()
+        if cap is None:
+            print(f"[DMS] ERROR: Could not open any camera source. Tried: {CAMERA_SOURCE}, 0")
             self._publish_component_status("error", "Camera not available")
             return
 
-        if not IS_STREAM:
+        # Determine if we're using a stream based on the actual opened source
+        is_using_stream = False
+        if isinstance(CAMERA_SOURCE, str) and CAMERA_SOURCE.startswith(("http", "tcp", "rtsp")):
+            is_using_stream = True
+        
+        if not is_using_stream:
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 

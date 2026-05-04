@@ -8,6 +8,8 @@ module.exports = (io) => {
   const router = express.Router();
 router.get("/", busController.getBuses);
 router.get("/:busId", busController.getBusById);
+router.get("/:busId/telemetry", busController.getBusTelemetry);
+router.get("/:busId/telemetry/history", busController.getBusTelemetryHistory);
 router.post("/", busController.createBus);
 router.put("/:busId/location", (req, res) => updateBusLocation(req, res, io));
 router.put("/:busId/occupancy", busController.updateOccupancy);

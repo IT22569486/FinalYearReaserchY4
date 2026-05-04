@@ -28,10 +28,12 @@
 // CONFIGURATION
 //////////////////////////////////////
 
-const char* ssid = "SLT-4G_BD8DB";
-const char* password = "prolink12345";
+// WiFi Settings
+const char* ssid = "SLT-4G-FD181A";
+const char* password = "3L2K55XJR44";
 
-const char* mqtt_server = "192.168.1.14";
+// MQTT Broker IP (your PC running the Node.js backend)
+const char* mqtt_server = "192.168.1.253";
 const int mqtt_port = 1883;
 
 Preferences preferences;
@@ -116,7 +118,7 @@ float speedKmh = 0;
 bool gpsValid = true;
 
 float busWeight = 0;
-int passengerCount = 5;
+int passengerCount = 10;  // Start with 35 passengers (increased from 5)
 int passengerIn = 0;
 int passengerOut = 0;
 int sessionIn = 0;
@@ -381,14 +383,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 //////////////////////////////////////
 
 void simulatePassengerActivity() {
-  // Random boarding: 1-6 passengers
-  sessionIn = random(1, 7);
-  // Random alighting: 0-3 passengers (can't go below 0 total)
-  sessionOut = random(0, min(4, passengerCount + 1));
+  // Random boarding: 5-15 passengers (increased from 1-6)
+  sessionIn = random(5, 16);
+  // Random alighting: 1-5 passengers
+  sessionOut = random(1, 6);
 
   passengerCount = passengerCount + sessionIn - sessionOut;
   if (passengerCount < 0) passengerCount = 0;
-  if (passengerCount > 60) passengerCount = 60;
+  if (passengerCount > 60) passengerCount = 60;  // Max capacity
 
   passengerIn += sessionIn;
   passengerOut += sessionOut;
@@ -757,7 +759,7 @@ void setup() {
   // Set initial position
   latitude = ROUTE_STOPS[0].lat;
   longitude = ROUTE_STOPS[0].lon;
-  busWeight = passengerCount * 65.0;
+  busWeight = passengerCount * 65.0;  // Now starts with 35 * 65 = 2,275 kg
 
   // Initialize Display
   tft.begin();

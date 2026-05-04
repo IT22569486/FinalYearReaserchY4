@@ -26,7 +26,7 @@ from functools import lru_cache
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for detailed diagnostics
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('SafeSpeedMonitor')
@@ -126,8 +126,12 @@ class SafeSpeedMonitor:
 
     def _load_ml_model(self):
         """Load LightGBM safe speed prediction model"""
+        logger.info(f"ML_AVAILABLE: {ML_AVAILABLE}")
+        logger.info(f"COMPONENT_DIR: {COMPONENT_DIR}")
+        
         if not ML_AVAILABLE:
-            logger.warning("ML dependencies not available - predictions will use fallback")
+            logger.error("❌ ML dependencies NOT available - predictions will use fallback (40 km/h)")
+            logger.error("   Please install: pip install pandas joblib lightgbm requests")
             return
 
         # Look for model files
@@ -136,27 +140,43 @@ class SafeSpeedMonitor:
             COMPONENT_DIR,
         ]
 
+        logger.info(f"🔍 Searching for model files in:")
+        for loc in model_locations:
+            logger.info(f"   - {loc}")
+
         model_path = None
         encoders_path = None
         for loc in model_locations:
             mp = loc / 'lightgbm_safe_speed_model.pkl'
             ep = loc / 'label_encoders.pkl'
+            logger.debug(f"   Checking: {mp} exists={mp.exists()}")
+            logger.debug(f"   Checking: {ep} exists={ep.exists()}")
             if mp.exists() and ep.exists():
                 model_path = mp
                 encoders_path = ep
+                logger.info(f"✅ Found model files in {loc}")
                 break
 
         if model_path and encoders_path:
             try:
+                logger.info(f"📥 Loading model from: {model_path}")
                 self.model = joblib.load(str(model_path))
+                logger.info(f"📥 Loading encoders from: {encoders_path}")
                 self.label_encoders = joblib.load(str(encoders_path))
-                logger.info(f"ML model loaded from {model_path.parent}")
+                logger.info(f"✅ ML MODEL SUCCESSFULLY LOADED from {model_path.parent}")
+                logger.info(f"   Model type: {type(self.model)}")
+                logger.info(f"   Encoders type: {type(self.label_encoders)}")
             except Exception as e:
-                logger.error(f"Failed to load ML model: {e}")
+                logger.error(f"❌ Failed to load ML model: {e}")
+                logger.error(f"   Model will NOT be used - predictions will use fallback (40 km/h)")
+                self.model = None
+                self.label_encoders = None
         else:
-            logger.warning("ML model files not found. Copy lightgbm_safe_speed_model.pkl "
-                         "and label_encoders.pkl to device/safe_speed_monitoring/models/")
-            logger.warning("Predictions will use fallback speed of 40 km/h")
+            logger.error("❌ ML model files NOT found!")
+            logger.error(f"   Expected location 1: {model_locations[0]}")
+            logger.error(f"   Expected location 2: {model_locations[1]}")
+            logger.error("   Copy lightgbm_safe_speed_model.pkl and label_encoders.pkl to device/safe_speed_monitoring/")
+            logger.error("   Predictions will use fallback speed of 40 km/h")
 
     def _setup_mqtt(self):
         """Setup MQTT client"""
@@ -325,21 +345,38 @@ class SafeSpeedMonitor:
             return "Kollupitiya_to_Kaduwela"
 
     def reverse_geocode(self, lat, lon):
-        """Reverse geocode GPS coordinates to location name"""
+        """Reverse geocode GPS coordinates to location name with caching and retry"""
         lat_r = round(lat, 3)
         lon_r = round(lon, 3)
+        cache_key = (lat_r, lon_r)
+        
+        # Cache results to avoid repeated API calls
+        if not hasattr(self, '_geocode_cache'):
+            self._geocode_cache = {}
+        
+        if cache_key in self._geocode_cache:
+            return self._geocode_cache[cache_key]
+        
         try:
             url = f"https://nominatim.openstreetmap.org/reverse?lat={lat_r}&lon={lon_r}&format=json"
             headers = {"User-Agent": "SmartBusFleetSystem/1.0"}
-            r = requests.get(url, headers=headers, timeout=5)
+            r = requests.get(url, headers=headers, timeout=3)  # Reduced timeout
             r.raise_for_status()
             data = r.json()
             addr = data.get("address", {})
-            return (addr.get("suburb") or addr.get("neighbourhood") or
-                    addr.get("town") or addr.get("city") or "Unknown")
+            location = (addr.get("suburb") or addr.get("neighbourhood") or
+                       addr.get("town") or addr.get("city") or "Unknown_Location")
+            self._geocode_cache[cache_key] = location
+            logger.debug(f"✅ Geocoded ({lat_r}, {lon_r}) → {location}")
+            return location
+        except requests.Timeout:
+            logger.warning(f"⚠️ Geocoding timeout at ({lat_r}, {lon_r}) - using fallback")
+            self._geocode_cache[cache_key] = "Urban_Area"
+            return "Urban_Area"
         except Exception as e:
-            logger.warning(f"Geocoding error: {e}")
-            return "Unknown"
+            logger.warning(f"⚠️ Geocoding error at ({lat_r}, {lon_r}): {e}")
+            self._geocode_cache[cache_key] = "Urban_Area"
+            return "Urban_Area"
 
     def get_weather(self, lat, lon):
         """Get weather data from OpenWeatherMap"""
@@ -379,13 +416,29 @@ class SafeSpeedMonitor:
         return "Wet" if condition == 1 else "Dry"
 
     def safe_encode(self, col, value):
-        """Safely encode categorical values for ML model"""
+        """Safely encode categorical values for ML model with fallback strategy"""
         if self.label_encoders is None:
+            logger.debug(f"⚠️ No encoders available for {col}={value}, using 0")
             return 0
+        
         enc = self.label_encoders.get(col)
         if enc is None:
+            logger.debug(f"⚠️ No encoder for column '{col}', using 0")
             return 0
-        return int(enc.transform([value])[0]) if value in enc.classes_ else 0
+        
+        # If value is in the encoder's classes, use it
+        if value in enc.classes_:
+            encoded = int(enc.transform([value])[0])
+            logger.debug(f"✅ Encoded {col}='{value}' → {encoded}")
+            return encoded
+        
+        # Handle unknown values - use mean of known values as fallback
+        logger.debug(f"⚠️ Unknown value {col}='{value}' not in encoder classes: {list(enc.classes_[:5])}...")
+        
+        # For unknown locations/directions, use middle value to avoid extremes
+        unknown_code = len(enc.classes_) // 2
+        logger.debug(f"   Using fallback code: {unknown_code}")
+        return unknown_code
 
     # ========================================================================
     # PREDICTION
@@ -417,6 +470,7 @@ class SafeSpeedMonitor:
         safe_speed = 40.0  # Default fallback
         if self.model is not None and ML_AVAILABLE:
             try:
+                logger.debug("🤖 Using ML Model for prediction...")
                 df = pd.DataFrame([{
                     "vehicle_id": self.vehicle_id,
                     "route_id": self.route_id,
@@ -438,16 +492,37 @@ class SafeSpeedMonitor:
                     "season": season
                 }])
 
+                logger.debug(f"   📊 Raw Features:")
+                logger.debug(f"      Location: {location_name}, Direction: {direction}")
+                logger.debug(f"      Passengers: {passenger_count}, Load: {passenger_load_kg}kg")
+                logger.debug(f"      Weather: {temp}°C, {humidity}% humidity, rain={rain_intensity}")
+                logger.debug(f"      Time: hour={hour}, day={day}, weekend={is_weekend}, peak={is_peak}")
+
                 df["is_night"] = ((df["hour_of_day"] < 5) | (df["hour_of_day"] > 20)).astype(int)
                 df["load_per_passenger"] = df["passenger_load_kg"] / (df["passenger_count"] + 1)
+
+                logger.debug(f"   📊 Before Encoding:")
+                logger.debug(f"      {df[['vehicle_id', 'route_id', 'direction', 'location_name']].to_dict()}")
 
                 for col in ["vehicle_id", "route_id", "direction", "location_name"]:
                     df[col] = df[col].apply(lambda x, c=col: self.safe_encode(c, x))
 
+                logger.debug(f"   📊 After Encoding:")
+                logger.debug(f"      {df[['vehicle_id', 'route_id', 'direction', 'location_name']].to_dict()}")
+
                 safe_speed = round(float(self.model.predict(df)[0]), 1)
+                logger.info(f"   ✅ ML Model predicted: {safe_speed} km/h")
             except Exception as e:
-                logger.error(f"Prediction error: {e}")
+                logger.error(f"❌ Prediction error: {e}")
+                import traceback
+                logger.error(f"   Traceback: {traceback.format_exc()}")
+                logger.error(f"   Falling back to default: 40 km/h")
                 safe_speed = 40.0
+        else:
+            if self.model is None:
+                logger.warning(f"⚠️  Model is None - using fallback (40 km/h)")
+            if not ML_AVAILABLE:
+                logger.warning(f"⚠️  ML not available - using fallback (40 km/h)")
 
         return {
             "safe_speed": safe_speed,
@@ -508,7 +583,13 @@ class SafeSpeedMonitor:
         logger.info(f"  Vehicle: {self.vehicle_id}")
         logger.info(f"  Route: {self.route_id}")
         logger.info(f"  Bus: {self.bus_number}")
-        logger.info(f"  Model: {'Loaded' if self.model else 'Fallback (40 km/h)'}")
+        
+        # Show model status clearly
+        if self.model is not None:
+            logger.info(f"  ✅ Model: LOADED - Predictions will use LightGBM model")
+        else:
+            logger.error(f"  ❌ Model: NOT LOADED - Predictions will use fallback (40 km/h)")
+        
         logger.info(f"  MQTT: {self.mqtt_broker}:{self.mqtt_port}")
         logger.info(f"  Send Interval: {self.send_interval}s")
         logger.info("=" * 60)
