@@ -1,3 +1,4 @@
+// npm run simulate:all-buses -- --routeId C3bFJjjZI2MFc7ZFpX5b --maxBuses 10 --forwardCount 5 --reverseCount 5 > ctb-bus-monitoring-backend@1.0.0 simulate:all-buses > node scripts/simulateAllBusesOnRoutes.js --routeId C3bFJjjZI2MFc7ZFpX5b --maxBuses 10 --forwardCount 5 --reverseCount 5
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
