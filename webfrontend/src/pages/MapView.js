@@ -3,8 +3,6 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Bus,
-  Gauge,
-  Users,
   CloudRain,
   Sun,
   Navigation,
@@ -229,25 +227,6 @@ function MapView() {
                           </span>
                         </div>
 
-                        {/* Current Speed */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Gauge size={14} color="#3b82f6" />
-                          <span style={{ color: 'var(--gray-200)' }}>
-                            <strong>{bus.speed || 0}</strong> km/h
-                            {bus.safe_speed && <span style={{ marginLeft: '0.25rem', color: 'var(--gray-500)' }}>
-                              (limit: {bus.safe_speed})
-                            </span>}
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <Users size={14} color="#f59e0b" />
-                          <span style={{ color: 'var(--gray-200)' }}>{bus.occupancy || 0} passengers</span>
-                          <span style={{ color: 'var(--gray-200)' }}>
-                            {bus.passenger_count || bus.occupancy || 0} passengers
-                          </span>
-                        </div>
-
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {bus.road_condition === 'Wet' ? (
                             <CloudRain size={14} color="#e6669f" />
@@ -266,7 +245,7 @@ function MapView() {
                         color: 'var(--gray-500)'
                       }}>
                         {bus.route_id && <div>Route ID: {bus.route_id}</div>}
-                        {bus.direction && <div>{bus.direction?.replace(/_/g, ' → ')}</div>}
+                        {bus.direction && typeof bus.direction === 'string' && <div>{bus.direction.replace(/_/g, ' → ')}</div>}
                         {bus.last_updated && (
                           <div style={{ marginTop: '0.25rem' }}>
                             Updated: {new Date(bus.last_updated).toLocaleTimeString()}

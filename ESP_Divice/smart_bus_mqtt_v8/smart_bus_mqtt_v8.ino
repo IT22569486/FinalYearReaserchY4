@@ -25,11 +25,11 @@
 //////////////////////////////////////
 
 // WiFi Settings
-const char* ssid = "SLT-4G_BD8DB";
-const char* password = "prolink12345";
+const char* ssid = "SLT-4G-FD181A";
+const char* password = "3L2K55XJR44";
 
 // MQTT Broker IP (your PC running the Node.js backend)
-const char* mqtt_server = "192.168.1.15";
+const char* mqtt_server = "192.168.1.253";
 const int mqtt_port = 1883;
 
 // Bus Configuration (stored in flash)
@@ -62,7 +62,7 @@ float speedKmh = 0;
 bool gpsValid = false;
 
 //////////////////////////////////////
-// LOAD CELL
+// LOAD CELL (4 Load Cells with 3-Wire Configuration)
 //////////////////////////////////////
 
 #define HX_DOUT 32
@@ -70,7 +70,35 @@ bool gpsValid = false;
 
 HX711 scale;
 float busWeight = 0;
-float calibrationFactor = 2280.0;
+float calibrationFactor = 2280.0; // Adjust this value based on calibration
+
+// Function to initialize the load cells
+void setupLoadCells() {
+  scale.begin(HX_DOUT, HX_SCK);
+  scale.set_scale(calibrationFactor); // Set the calibration factor
+  scale.tare(); // Reset the scale to 0
+  Serial.println("Load cells initialized and tared.");
+}
+
+// Function to read the combined weight from the load cells
+void readWeight() {
+  if (scale.is_ready()) {
+    busWeight = scale.get_units(10); // Average of 10 readings
+
+    // Filter out small noise and negative readings from the sensor
+    // Treat any reading below this threshold as zero (noise/tare drift)
+    const float MIN_VALID_WEIGHT = 0.02; // kg
+    if (busWeight < MIN_VALID_WEIGHT) {
+      busWeight = 0.0;
+    }
+
+    Serial.print("Bus Weight: ");
+    Serial.print(busWeight, 2);
+    Serial.println(" kg");
+  } else {
+    Serial.println("HX711 not found. Check wiring.");
+  }
+}
 
 //////////////////////////////////////
 // IR PASSENGER SENSORS
@@ -328,17 +356,6 @@ void passengerCounter() {
     sensorsLocked = true;
     lastTriggerTime = millis();
     Serial.println("Passenger OUT: " + String(passengerCount));
-  }
-}
-
-//////////////////////////////////////
-// WEIGHT READING
-//////////////////////////////////////
-
-void readWeight() {
-  if (scale.is_ready()) {
-    busWeight = scale.get_units(5);
-    if (busWeight < 0) busWeight = 0;
   }
 }
 
@@ -603,9 +620,7 @@ void setup() {
   gpsSerial.begin(9600, SERIAL_8N1, 16, 17);
 
   // Initialize Scale
-  scale.begin(HX_DOUT, HX_SCK);
-  scale.set_scale(calibrationFactor);
-  scale.tare();
+  setupLoadCells();
 
   // Initialize Display
   tft.begin();

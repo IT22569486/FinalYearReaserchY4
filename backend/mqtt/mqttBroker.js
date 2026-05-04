@@ -467,6 +467,7 @@ async function ensureBusExists(busId, payload) {
         const snap = await db.collection('buses').where('busId', '==', busId).limit(1).get();
         const lat = payload.latitude;
         const lng = payload.longitude;
+        const passengerCount = payload.passenger_count ?? payload.total_passenger_count ?? 0;
         const location = (lat != null && lng != null)
             ? { lat, lng, latitude: lat, longitude: lng }
             : null;
@@ -474,7 +475,7 @@ async function ensureBusExists(busId, payload) {
         if (!snap.empty) {
             // Update live fields
             const update = {
-                occupancy: payload.passenger_count || 0,
+                occupancy: passengerCount,
                 speed: payload.speed || 0,
                 status: 'active',
                 updatedAt: new Date().toISOString(),
@@ -494,7 +495,7 @@ async function ensureBusExists(busId, payload) {
                 routeId: payload.route_id || null,
                 routeNumber: payload.route_id || null,
                 capacity: 60,
-                occupancy: payload.passenger_count || 0,
+                occupancy: passengerCount,
                 status: 'active',
                 location,
                 speed: payload.speed || 0,
@@ -511,15 +512,26 @@ async function ensureBusExists(busId, payload) {
 /**
  * Handle combined telemetry from ESP32 v8
  * Topic: bus/{bus_id}/telemetry
- * Payload: { bus_id, route_id, latitude, longitude, speed, passenger_count, total_weight, gps_valid, timestamp }
+ * Payload: { bus_id, route_id, latitude, longitude, speed, passenger_count|total_passenger_count, total_weight, gps_valid, timestamp }
  */
 async function handleBusTelemetry(topic, payload) {
     const parts = topic.split('/');
     const busId = parts[1];
 
-    const { route_id, latitude, longitude, speed, passenger_count, total_weight, gps_valid, timestamp } = payload;
+    const {
+        route_id,
+        latitude,
+        longitude,
+        speed,
+        passenger_count,
+        total_passenger_count,
+        total_weight,
+        gps_valid,
+        timestamp
+    } = payload;
+    const effectivePassengerCount = passenger_count ?? total_passenger_count ?? 0;
 
-    console.log(`Telemetry from bus ${busId}: lat=${latitude}, lng=${longitude}, speed=${speed}, passengers=${passenger_count}`);
+    console.log(`Telemetry from bus ${busId}: lat=${latitude}, lng=${longitude}, speed=${speed}, passengers=${effectivePassengerCount}`);
 
     try {
         const routeName = await getRouteName(route_id);
@@ -537,7 +549,8 @@ async function handleBusTelemetry(topic, payload) {
             latitude,
             longitude,
             speed: speed || 0,
-            passenger_count: passenger_count || 0,
+            passenger_count: effectivePassengerCount,
+            total_passenger_count: effectivePassengerCount,
             total_weight: total_weight || 0,
             gps_valid: gps_valid !== false,
             status: 'online',
@@ -554,7 +567,8 @@ async function handleBusTelemetry(topic, payload) {
             latitude,
             longitude,
             speed: speed || 0,
-            passenger_count: passenger_count || 0,
+            passenger_count: effectivePassengerCount,
+            total_passenger_count: effectivePassengerCount,
             total_weight: total_weight || 0,
             gps_valid: gps_valid !== false,
             timestamp: now,
@@ -571,7 +585,8 @@ async function handleBusTelemetry(topic, payload) {
                 latitude,
                 longitude,
                 speed: speed || 0,
-                passenger_count: passenger_count || 0,
+                passenger_count: effectivePassengerCount,
+                total_passenger_count: effectivePassengerCount,
                 total_weight: total_weight || 0,
                 gps_valid: gps_valid !== false,
                 location: { lat: latitude, lng: longitude },

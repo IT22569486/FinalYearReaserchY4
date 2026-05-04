@@ -111,7 +111,7 @@ function BusDetail() {
           <div className="stat-value" style={{ fontSize: '1.5rem' }}>
             {bus.location_name || 'Unknown'}
           </div>
-          <div className="stat-label">{bus.direction?.replace(/_/g, ' → ')}</div>
+          <div className="stat-label">{typeof bus.direction === 'string' ? bus.direction.replace(/_/g, ' → ') : 'N/A'}</div>
         </div>
 
         <div className="card stat-card">
@@ -157,7 +157,7 @@ function BusDetail() {
             </div>
             <div className="info-item">
               <span className="info-label">Direction</span>
-              <span className="info-value">{bus.direction?.replace(/_/g, ' → ') || '-'}</span>
+              <span className="info-value">{typeof bus.direction === 'string' ? bus.direction.replace(/_/g, ' → ') : '-'}</span>
             </div>
             <div className="info-item">
               <span className="info-label">GPS Coordinates</span>

@@ -4,7 +4,6 @@ import {
   Bus, 
   CloudRain,
   Sun,
-  Users,
   ChevronRight
 } from 'lucide-react';
 import { useBuses } from '../hooks/useFleet';
@@ -57,12 +56,9 @@ function BusList() {
               <thead>
                 <tr>
                   <th>Vehicle ID</th>
-                  <th>Route</th>
-                  <th>Current Location</th>
                   <th>Direction</th>
                   <th>Safe Speed</th>
                   <th>Road</th>
-                  <th>Passengers</th>
                   <th>Status</th>
                   <th>Last Update</th>
                   <th></th>
@@ -81,10 +77,8 @@ function BusList() {
                         {bus.busId}
                       </div>
                     </td>
-                    <td>{bus.routeId}</td>
-                    <td>{bus.location_name || 'Unknown'}</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
-                      {bus.direction?.replace(/_/g, ' \u2192 ') || '-'}
+                      {typeof bus.direction === 'string' ? bus.direction.replace(/_/g, ' \u2192 ') : '-'}
                     </td>
                     <td>
                       <div className="speed-display">
@@ -97,12 +91,6 @@ function BusList() {
                         {bus.road_condition === 'Wet' ? <CloudRain size={12} /> : <Sun size={12} />}
                         {bus.road_condition || 'Dry'}
                       </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Users size={14} color="#9ca3af" />
-                        {bus.occupancy || 0}
-                      </div>
                     </td>
                     <td>
                       <span className={`badge ${bus.status}`}>
