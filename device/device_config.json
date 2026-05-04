@@ -4,33 +4,27 @@
   "vehicle_id": "NA-225566",
   "route_id": "177_Kaduwela_Kollupitiya",
   "device_key": "CTB-B89A2A4BFD2E-4D73EAD0",
-
   "mqtt_broker": "localhost",
   "mqtt_port": 1883,
   "mqtt_username": "",
   "mqtt_password": "",
   "mqtt_topic_base": "ctb/bus",
-
   "health_interval_seconds": 30,
   "send_interval_seconds": 5,
   "vehicle_speed_kmh": 40,
-
   "camera": {
     "index": 0,
     "width": 640,
     "height": 480,
     "fps": 15
   },
-
   "gps": {
     "enabled": false,
     "simulation": true,
     "serial_port": "/dev/ttyUSB0",
     "baud_rate": 9600
   },
-
   "openweather_api_key": "",
-
   "components": {
     "context_aware_monitoring": {
       "enabled": true,
@@ -38,12 +32,29 @@
       "enable_lane_detection": true,
       "enable_behavior_analysis": true,
       "enable_adaptive_processing": true,
+      "enable_video_enhancement": false,
       "show_gui": true,
-      "video_source": 0,
-      "yolo_imgsz": 384,
-      "depth_input_size": [256, 256]
+      "video_source": "C:/Users/sanda/Downloads/Driving Video.mp4",
+      "yolo_imgsz": 640,
+      "depth_input_size": [256, 256],
+      "video_enhancement": {
+        "enhancement_level": "MODERATE",
+        "enable_denoise": true,
+        "enable_white_balance": true,
+        "enable_dehaze": false,
+        "enable_clahe": true,
+        "enable_sharpen": true,
+        "enable_gamma": true,
+        "enable_stabilization": false,
+        "clahe_clip_limit": 2.5,
+        "clahe_grid_size": 8,
+        "denoise_strength": 5,
+        "sharpen_amount": 0.3,
+        "gamma": 0,
+        "target_brightness": 120,
+        "road_roi_top_ratio": 0.40
+      }
     },
-    
     "safe_speed_monitoring": {
       "enabled": true
     },

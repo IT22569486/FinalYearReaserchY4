@@ -118,19 +118,32 @@ class DriverBehaviorAnalyzer:
     def count_objects_in_lane(self, detected_objects: List[dict], 
                                lane_polygon: Optional[np.ndarray]) -> int:
         """
-        Count objects that are within our driving lane (green segment).
+        Count objects that are within our driving lane.
+        
+        When lane polygon is available: counts only objects inside the lane boundary.
+        When lane polygon is NOT available (no lane lines detected): falls back to
+        counting ALL detected objects as potential road traffic. This prevents false
+        NO_TRAFFIC readings when lane lines are not visible but the road is busy.
         
         Args:
             detected_objects: List of detected objects with 'bbox', 'class', 'brightness'
-            lane_polygon: Points defining the green segmented lane area
+            lane_polygon: Points defining the lane area, or None if lanes not detected
             
         Returns:
-            Number of objects in our lane
+            Number of objects counted (in-lane or total if no lane info)
         """
-        if lane_polygon is None or len(detected_objects) == 0:
+        if len(detected_objects) == 0:
             self.in_lane_objects = []
             return 0
         
+        # FALLBACK: No lane polygon — count ALL detected objects as road traffic
+        # When lane lines are not visible, we can't determine which objects are
+        # "in our lane," so we treat all detected objects as potential traffic.
+        if lane_polygon is None:
+            self.in_lane_objects = list(detected_objects)
+            return len(detected_objects)
+        
+        # NORMAL: Lane polygon available — count only objects inside the lane
         in_lane = []
         
         for obj in detected_objects:
@@ -150,6 +163,24 @@ class DriverBehaviorAnalyzer:
                 in_lane.append(obj)
         
         self.in_lane_objects = in_lane
+        
+        # PROXIMITY BOOST: When the closest in-lane object is VERY CLOSE,
+        # expand traffic count to include ALL detected objects.
+        # Rationale: If we're stuck right behind a vehicle, the road is likely
+        # congested across all lanes — counting only in-lane objects (often just 1)
+        # would underestimate the true traffic level.
+        # Only triggers when: (a) there ARE in-lane objects, AND (b) closest is nearby.
+        CLOSE_BRIGHTNESS_THRESHOLD = 80  # brightness > 80 = Close/Very Close
+        
+        if len(in_lane) > 0:
+            # Find the closest in-lane object (highest brightness = closest)
+            max_brightness = max(obj.get('brightness', 0) for obj in in_lane)
+            
+            if max_brightness > CLOSE_BRIGHTNESS_THRESHOLD and len(detected_objects) > len(in_lane):
+                # Vehicle ahead is very close — count ALL objects for traffic
+                self.in_lane_objects = list(detected_objects)
+                return len(detected_objects)
+        
         return len(in_lane)
     
     def analyze_traffic(self, in_lane_count: int) -> TrafficLevel:

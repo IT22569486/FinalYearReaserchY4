@@ -11,7 +11,6 @@ Optimizations for Raspberry Pi:
 """
 
 import sys
-import os
 import time
 from pathlib import Path
 
@@ -107,81 +106,16 @@ except ImportError:
     print("WARNING: Adaptive processor not available")
     ADAPTIVE_PROCESSOR_AVAILABLE = False
 
-# MQTT for ESP32 communication (publish predictions + receive real-time speed)
+# Import Video Enhancer for detection-informed preprocessing
+# Inspired by: Shopovska et al., "HDR Tone Mapping in Intelligent Automotive
+#              Systems", Sensors 2023, DOI: 10.3390/s23125767
 try:
-    import paho.mqtt.client as mqtt
-    import json
-    MQTT_AVAILABLE = True
+    from video_enhancer import VideoEnhancer, create_video_enhancer, EnhancementLevel
+    VIDEO_ENHANCER_AVAILABLE = True
+    print(" Video enhancer imported successfully")
 except ImportError:
-    print("WARNING: paho-mqtt not available. ESP32 prediction display disabled.")
-    MQTT_AVAILABLE = False
-
-# ESP32 MQTT publish state
-_esp32_mqtt_client = None
-_esp32_last_publish_time = 0
-_ESP32_PUBLISH_INTERVAL = 2  # seconds
-_live_speed_kmh = VEHICLE_SPEED_KMH  # updated from ESP32 telemetry
-
-
-def _setup_esp32_mqtt():
-    """Set up MQTT client for ESP32 communication."""
-    global _esp32_mqtt_client
-    if not MQTT_AVAILABLE:
-        return
-    try:
-        client_id = f"{_cfg.device_key}-CAM-{os.getpid()}"
-        _esp32_mqtt_client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
-            client_id=client_id
-        )
-        username = _cfg.mqtt_username
-        password = _cfg.mqtt_password
-        if username:
-            _esp32_mqtt_client.username_pw_set(username, password)
-        _esp32_mqtt_client.on_message = _esp32_on_message
-        _esp32_mqtt_client.connect(_cfg.mqtt_broker, _cfg.mqtt_port, keepalive=60)
-        # Subscribe to ESP32 telemetry for real-time speed
-        telemetry_topic = f"bus/{_cfg.vehicle_id}/telemetry"
-        _esp32_mqtt_client.subscribe(telemetry_topic, 0)
-        _esp32_mqtt_client.loop_start()
-        print(f"[CAM] MQTT connected to {_cfg.mqtt_broker}:{_cfg.mqtt_port}")
-        print(f"[CAM] Subscribed to {telemetry_topic} for real-time speed")
-    except Exception as e:
-        print(f"[CAM] MQTT connect error: {e}")
-        _esp32_mqtt_client = None
-
-
-def _esp32_on_message(client, userdata, msg):
-    """Handle ESP32 telemetry to get real-time speed."""
-    global _live_speed_kmh
-    try:
-        payload = json.loads(msg.payload.decode('utf-8'))
-        if 'speed' in payload:
-            _live_speed_kmh = float(payload['speed'])
-    except Exception:
-        pass
-
-
-def _publish_to_esp32(warning_state, closest_proximity, lane_warning_active, wrong_side_active):
-    """Publish context-aware predictions to ESP32 display."""
-    global _esp32_last_publish_time
-    if not _esp32_mqtt_client:
-        return
-    now = time.time()
-    if now - _esp32_last_publish_time < _ESP32_PUBLISH_INTERVAL:
-        return
-    _esp32_last_publish_time = now
-    topic = f"bus/{_cfg.vehicle_id}/context-aware"
-    payload = {
-        'warning': warning_state,
-        'proximity': closest_proximity,
-        'lane_warning': lane_warning_active,
-        'wrong_side': wrong_side_active
-    }
-    try:
-        _esp32_mqtt_client.publish(topic, json.dumps(payload), qos=0)
-    except Exception:
-        pass
+    print("WARNING: Video enhancer not available — raw frames will be used")
+    VIDEO_ENHANCER_AVAILABLE = False
 
 
 def get_palette(n):
@@ -422,7 +356,7 @@ def main():
     # ---- Lane Memory Tracker ----
     lane_tracker = None
     if lane_model is not None and LANE_MEMORY_AVAILABLE:
-        lane_tracker = LaneMemoryTracker(max_history=30, decay_rate=0.95, smoothing_factor=0.3)
+        lane_tracker = LaneMemoryTracker(max_history=15, decay_rate=0.80, smoothing_factor=0.3)
         print("  Lane Memory Tracker initialized")
     
     # ---- Audio warnings ----
@@ -445,9 +379,6 @@ def main():
     WRONG_SIDE_DURATION_THRESHOLD = 3.0
     wrong_side_warning_active = False
     
-    # ---- MQTT for ESP32 predictions display ----
-    _setup_esp32_mqtt()
-
     # ---- Driver Behavior Analyzer ----
     behavior_analyzer = None
     vehicle_speed = VEHICLE_SPEED_KMH
@@ -458,9 +389,14 @@ def main():
     
     # ---- Video Input ----
     video_path = VIDEO_SOURCE
-    if video_path == '0':
-        cap = cv2.VideoCapture(_cfg.camera_index)
+    
+    # Handle webcam index (integer 0 or string '0')
+    if isinstance(video_path, int) or str(video_path) == '0':
+        cam_idx = video_path if isinstance(video_path, int) else _cfg.camera_index
+        print(f"Opening webcam index: {cam_idx}")
+        cap = cv2.VideoCapture(cam_idx)
     else:
+        video_path = str(video_path)
         is_stream = video_path.startswith(("http://", "https://", "rtsp://", "rtmp://"))
         if not is_stream and not Path(video_path).exists():
             print(f"ERROR: Video not found: {video_path}")
@@ -477,6 +413,15 @@ def main():
     
     print(f"\nVideo: {video_path}")
     print(f"Resolution: {width}x{height} @ {fps:.1f} FPS")
+    
+    # ---- Detection-Informed Video Enhancement (DI-TM inspired) ----
+    video_enhancer = None
+    enable_enhancement = _comp.get("enable_video_enhancement", True)
+    if VIDEO_ENHANCER_AVAILABLE and enable_enhancement:
+        video_enhancer = create_video_enhancer(_comp)
+        print(f"  Video enhancement enabled (DI-TM inspired)")
+    else:
+        print(f"  Video enhancement disabled — using raw frames")
     
     # Initialize Adaptive Processor for performance optimizations
     adaptive_processor = None
@@ -530,6 +475,14 @@ def main():
                 break
             
             frame_count += 1
+            
+            # =====================================================================
+            # DETECTION-INFORMED VIDEO ENHANCEMENT (before model inference)
+            # Ref: Shopovska et al., Sensors 2023 — optimize preprocessing
+            #      for detection accuracy, not just visual quality
+            # =====================================================================
+            if video_enhancer is not None:
+                frame, _ve_stats = video_enhancer.enhance(frame)
             
             # =====================================================================
             # ADAPTIVE PROCESSING OPTIMIZATION
@@ -716,6 +669,13 @@ def main():
                     
                     ys, xs = np.where(mask_bool)
                     if len(xs) > 0:
+                        # Filter out horizontal markings (stop lines, crosswalks)
+                        # A real lane line must be more vertical than horizontal
+                        y_span = int(np.max(ys)) - int(np.min(ys))
+                        x_span = int(np.max(xs)) - int(np.min(xs))
+                        if x_span > y_span * 1.5 or y_span < height * 0.15:
+                            continue  # Skip horizontal/short markings
+                        
                         lane_center_x = int(np.mean(xs))
                         lane_info = {
                             'mask_bool': mask_bool,
@@ -739,12 +699,11 @@ def main():
                 if lane_tracker is not None:
                     tracked_lanes = lane_tracker.update(detected_lane_masks, frame.shape, center_x)
                     
-                    # Draw lane segmentation overlay (filled area between lanes)
-                    seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
-                    if seg_overlay is not None:
-                        # Apply segmentation overlay with transparency based on confidence
-                        alpha = 0.30 * seg_confidence  # Increased visibility
-                        annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
+                    # Lane segmentation overlay (kept for internal use, hidden from preview)
+                    # seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
+                    # if seg_overlay is not None:
+                    #     alpha = 0.30 * seg_confidence
+                    #     annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
                     
                     # Draw road structure prediction (STRAIGHT/CURVE)
                     annotated = lane_tracker.draw_road_structure(annotated)
@@ -802,53 +761,42 @@ def main():
                             cv2.putText(annotated, label_text, (label_x, label_y),
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
                     
-                    # Lane departure warning logic for left-side driving country
-                    # Check if vehicle dot crosses any solid lane [4,5,6,7,8]
-                    if cls in SOLID_LANE_IDS:
+                    # Lane departure warning logic for left-side driving country (Sri Lanka)
+                    # ONLY warn for RIGHT-side solid lane departures (single or double lines)
+                    # Filters: solid class + high confidence + vertical orientation + right side
+                    if cls in SOLID_LANE_IDS and conf > 0.55:
                         ys, xs = np.where(mask_bool)
                         if len(xs) > 0:
-                            lane_center_x = int(np.mean(xs))
+                            # Skip horizontal markings (stop lines, crosswalks)
+                            y_span = int(np.max(ys)) - int(np.min(ys))
+                            x_span = int(np.max(xs)) - int(np.min(xs))
+                            is_vertical_lane = (x_span <= y_span * 1.5) and (y_span >= height * 0.15)
                             
-                            # Calculate distance from vehicle dot to lane
-                            distances = np.sqrt((xs - center_x)**2 + (ys - center_y)**2)
-                            min_distance = float(np.min(distances))
-                            
-                            # Check if vehicle dot is crossing/touching the lane mask
-                            vehicle_touching_lane = mask_bool[center_y, center_x] if (0 <= center_y < height and 0 <= center_x < width) else False
-                            
-                            should_warn = False
-                            warning_type = ""
-                            
-                            # Case 1: Normal driving - warn if crossing middle lane (left side solid line)
-                            # In left-side driving, the middle lane is on the LEFT of vehicle
-                            if lane_center_x < center_x:  # Lane is on left side (middle lane for left-driving)
-                                if vehicle_touching_lane or min_distance < proximity_threshold:
-                                    should_warn = True
-                                    warning_type = "LEFT_LANE_DEPARTURE"
-                            
-                            # Case 2: Crossing right-side solid lane
-                            elif lane_center_x > center_x:  # Lane is on right side
-                                if vehicle_touching_lane or min_distance < proximity_threshold:
-                                    should_warn = True
-                                    warning_type = "RIGHT_LANE_DEPARTURE"
-                            
-                            # NOTE: Case 3 (wrong-side driving) removed - too many false positives
-                            
-                            if should_warn:
-                                lane_warning = True
-                                current_time = time.time()
-                                if warning_sound and (current_time - last_warning_time) > warning_cooldown:
-                                    warning_sound.play()
-                                    last_warning_time = current_time
+                            if is_vertical_lane:
+                                lane_center_x = int(np.mean(xs))
                                 
-                                # Report lane violation to CTB system
-                                if health_monitor:
-                                    health_monitor.send_violation('lane_departure', {
-                                        'lane_type': lane_names.get(cls, 'unknown') if lane_names else 'solid',
-                                        'warning_type': warning_type,
-                                        'distance': min_distance,
-                                        'frame': frame_count
-                                    })
+                                # Only warn for RIGHT side lanes
+                                if lane_center_x > center_x:
+                                    distances = np.sqrt((xs - center_x)**2 + (ys - center_y)**2)
+                                    min_distance = float(np.min(distances))
+                                    
+                                    vehicle_touching_lane = mask_bool[center_y, center_x] if (0 <= center_y < height and 0 <= center_x < width) else False
+                                    
+                                    if vehicle_touching_lane or min_distance < proximity_threshold:
+                                        lane_warning = True
+                                        warning_type = "RIGHT_LANE_DEPARTURE"
+                                        current_time = time.time()
+                                        if warning_sound and (current_time - last_warning_time) > warning_cooldown:
+                                            warning_sound.play()
+                                            last_warning_time = current_time
+                                        
+                                        if health_monitor:
+                                            health_monitor.send_violation('lane_departure', {
+                                                'lane_type': lane_names.get(cls, 'unknown') if lane_names else 'solid',
+                                                'warning_type': warning_type,
+                                                'distance': min_distance,
+                                                'frame': frame_count
+                                            })
                 
                 # Wrong-side driving detection using lane geometry
                 # For left-side driving countries (Sri Lanka), if vehicle is to the RIGHT
@@ -910,7 +858,7 @@ def main():
                     red_overlay = np.zeros_like(annotated)
                     red_overlay[:, width//2:] = (0, 0, 180)
                     annotated = cv2.addWeighted(annotated, 0.85, red_overlay, 0.15, 0)
-                    cv2.putText(annotated, "LANE DEPARTURE WARNING", (width//2 - 150, 50),
+                    cv2.putText(annotated, "RIGHT LANE DEPARTURE WARNING", (width//2 - 180, 50),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
             # Handle case when lane model exists but no masks detected - use memory
@@ -923,10 +871,11 @@ def main():
                 
                 # Draw tracked lanes from memory if available
                 if tracked_lanes:
-                    seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
-                    if seg_overlay is not None:
-                        alpha = 0.25 * seg_confidence  # Slightly dimmer for memory
-                        annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
+                    # Lane segmentation overlay (kept for internal use, hidden from preview)
+                    # seg_overlay, seg_confidence = lane_tracker.get_segmented_lane_overlay(frame.shape)
+                    # if seg_overlay is not None:
+                    #     alpha = 0.25 * seg_confidence
+                    #     annotated = cv2.addWeighted(annotated, 1.0, seg_overlay, alpha, 0)
                     
                     # Draw road structure prediction
                     annotated = lane_tracker.draw_road_structure(annotated)
@@ -1056,30 +1005,6 @@ def main():
                 # Draw behavior overlay
                 annotated = behavior_analyzer.draw_overlay(annotated, lane_polygon)
             
-            # Update speed from ESP32 telemetry and publish predictions to ESP32
-            if behavior_analyzer is not None and _live_speed_kmh != vehicle_speed:
-                vehicle_speed = _live_speed_kmh
-                behavior_analyzer.set_speed(vehicle_speed)
-            
-            # Determine closest object proximity for ESP32 display
-            closest_prox = "Clear"
-            prox_priority = {"Very Close": 5, "Close": 4, "Near": 3, "Medium": 2, "Far": 1}
-            for obj in detected_objects:
-                p = obj.get('proximity', 'Far')
-                if prox_priority.get(p, 0) > prox_priority.get(closest_prox, 0):
-                    closest_prox = p
-            
-            # Build warning state for ESP32
-            cam_warning = "CLEAR"
-            if wrong_side_warning_active:
-                cam_warning = "WRONG SIDE"
-            elif lane_warning:
-                cam_warning = "LANE DEPART"
-            elif closest_prox in ("Very Close", "Close"):
-                cam_warning = "OBJ CLOSE"
-            
-            _publish_to_esp32(cam_warning, closest_prox, lane_warning, wrong_side_warning_active)
-            
             if depth_colored is not None:
                 cv2.putText(depth_colored, "DEPTH MAP", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -1105,15 +1030,18 @@ def main():
             midas_color = (0, 255, 0) if midas_active else (0, 200, 255)  # Green if active, Orange if frozen
             
             # Draw status bar background
-            cv2.rectangle(combined_frame, (5, 5), (500, 40), (0, 0, 0), -1)
+            ve_info = ""
+            if video_enhancer is not None:
+                ve_info = f" VE:{video_enhancer.get_avg_time_ms():.0f}ms"
+            cv2.rectangle(combined_frame, (5, 5), (580, 40), (0, 0, 0), -1)
             
             # Status text
-            status_text = f"F:{frame_count} FPS:{fps:.0f} | YOLO:{yolo_runs_count} MiDaS:{midas_runs_count} SKIP:{skip_rate:.0f}%"
+            status_text = f"F:{frame_count} FPS:{fps:.0f} | YOLO:{yolo_runs_count} MiDaS:{midas_runs_count} SKIP:{skip_rate:.0f}%{ve_info}"
             cv2.putText(combined_frame, status_text, (10, 25),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
             # MiDaS status indicator (separate for visibility)
-            cv2.putText(combined_frame, f"MIDAS:{midas_status}", (380, 25),
+            cv2.putText(combined_frame, f"MIDAS:{midas_status}", (460, 25),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, midas_color, 2)
             
             # Cache combined frame for fast skip mode
@@ -1139,11 +1067,6 @@ def main():
         if health_monitor:
             health_monitor.update_detection_status(camera=False)
             health_monitor.stop()
-        
-        # Stop ESP32 MQTT client
-        if _esp32_mqtt_client:
-            _esp32_mqtt_client.loop_stop()
-            _esp32_mqtt_client.disconnect()
     
     elapsed = time.time() - start_time
     print(f"\n{'='*60}")

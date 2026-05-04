@@ -238,7 +238,9 @@ class TrackedLane:
     
     def is_valid(self) -> bool:
         """Check if lane is still valid for rendering."""
-        return self.confidence >= 0.1 and self.poly_coeffs is not None
+        return (self.confidence >= 0.1 and 
+                self.poly_coeffs is not None and
+                self.frames_since_detection <= 15)
 
 
 class LaneMemoryTracker:
@@ -414,6 +416,15 @@ class LaneMemoryTracker:
             # Lane is too short - likely a zebra crossing or short marking
             return None
         
+        # Check orientation - reject horizontal markings (stop lines, crosswalks)
+        # A real lane line runs roughly vertically (bottom-to-top of frame).
+        # Horizontal markings have width >> height and are NOT lane boundaries.
+        x_min, x_max = np.min(xs), np.max(xs)
+        lane_horizontal_span = x_max - x_min
+        if lane_horizontal_span > lane_vertical_span * 1.5:
+            # More horizontal than vertical — stop line, crosswalk, or road marking
+            return None
+        
         # Group points by y-coordinate and find median x for each row
         # This gives us the lane centerline
         y_to_x = {}
@@ -460,6 +471,68 @@ class LaneMemoryTracker:
         
         return centerline
     
+    def _validate_lane_polygon(self, left_pts, right_pts, width, height):
+        """
+        Validate that the lane polygon is reasonable before drawing.
+        Rejects thin, twisted, crossing, or inconsistent-width shapes.
+        Returns True if the polygon should be drawn.
+        """
+        num_samples = min(len(left_pts), len(right_pts), 20)
+        if num_samples < 3:
+            return False
+        
+        left_y = left_pts[:, 1].astype(float)
+        left_x = left_pts[:, 0].astype(float)
+        right_y = right_pts[:, 1].astype(float)
+        right_x = right_pts[:, 0].astype(float)
+        
+        # Check vertical overlap
+        y_min = max(left_y.min(), right_y.min())
+        y_max = min(left_y.max(), right_y.max())
+        if y_max - y_min < height * 0.15:
+            return False
+        
+        sample_ys = np.linspace(y_min, y_max, num_samples)
+        
+        try:
+            left_x_sampled = np.interp(sample_ys, left_y, left_x)
+            right_x_sampled = np.interp(sample_ys, right_y, right_x)
+        except Exception:
+            return False
+        
+        lane_widths = right_x_sampled - left_x_sampled
+        
+        # Reject if lanes cross too much (twisted polygon)
+        if np.sum(lane_widths < 0) > num_samples * 0.2:
+            return False
+        
+        valid_widths = lane_widths[lane_widths > 0]
+        if len(valid_widths) < num_samples * 0.5:
+            return False
+        
+        avg_w = np.mean(valid_widths)
+        
+        # Too thin
+        if avg_w < width * 0.03:
+            return False
+        
+        # Too wide (wrong lane pairing)
+        if avg_w > width * 0.45:
+            return False
+        
+        # Width varies too wildly (twisted/unusual shape)
+        if len(valid_widths) >= 3:
+            cv = np.std(valid_widths) / (avg_w + 1e-6)
+            if cv > 0.8:
+                return False
+        
+        # Pinches to near-zero somewhere
+        if len(valid_widths) >= 3:
+            if avg_w > width * 0.05 and np.min(valid_widths) < width * 0.005:
+                return False
+        
+        return True
+    
     def get_segmented_lane_overlay(self, frame_shape: Tuple[int, int, int],
                                    fill_color: Tuple[int, int, int] = (0, 180, 0),
                                    memory_color: Tuple[int, int, int] = (0, 180, 180)
@@ -481,6 +554,8 @@ class LaneMemoryTracker:
         left_info = None
         right_info = None
         
+        MAX_MEMORY_FRAMES_FOR_OVERLAY = 10  # Don't show overlay from stale memory
+        
         for lane_id, tracked in self.tracked_lanes.items():
             if 'left' in lane_id and tracked.is_valid():
                 if left_info is None or tracked.confidence > left_info['confidence']:
@@ -489,7 +564,8 @@ class LaneMemoryTracker:
                         left_info = {
                             'points': points,
                             'confidence': tracked.confidence,
-                            'is_memory': tracked.frames_since_detection > 0
+                            'is_memory': tracked.frames_since_detection > 0,
+                            'frames_since_detection': tracked.frames_since_detection
                         }
             elif 'right' in lane_id and tracked.is_valid():
                 if right_info is None or tracked.confidence > right_info['confidence']:
@@ -498,18 +574,31 @@ class LaneMemoryTracker:
                         right_info = {
                             'points': points,
                             'confidence': tracked.confidence,
-                            'is_memory': tracked.frames_since_detection > 0
+                            'is_memory': tracked.frames_since_detection > 0,
+                            'frames_since_detection': tracked.frames_since_detection
                         }
         
+        # Require BOTH left and right lanes to be detected
         if left_info is None or right_info is None:
             return None, 0.0
         
-        # Create overlay
-        overlay = np.zeros((height, width, 3), dtype=np.uint8)
+        # Don't show segmentation if BOTH lanes are from stale memory
+        # This prevents the abnormal spreading/triangle overlay when predictions drift
+        left_stale = left_info['frames_since_detection'] > MAX_MEMORY_FRAMES_FOR_OVERLAY
+        right_stale = right_info['frames_since_detection'] > MAX_MEMORY_FRAMES_FOR_OVERLAY
+        if left_stale and right_stale:
+            return None, 0.0
         
         # Build polygon points
         left_pts = left_info['points']
         right_pts = right_info['points']
+        
+        # Validate polygon shape — reject thin/twisted/unusual overlays
+        if not self._validate_lane_polygon(left_pts, right_pts, width, height):
+            return None, 0.0
+        
+        # Create overlay
+        overlay = np.zeros((height, width, 3), dtype=np.uint8)
         
         # Create closed polygon: left points + reversed right points
         polygon_pts = np.vstack([left_pts, right_pts[::-1]])
