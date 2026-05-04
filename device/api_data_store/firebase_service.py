@@ -113,15 +113,26 @@ class FirebaseService:
         try:
             url = f"{BACKEND_API_URL}/buses/{bus_id}"
             payload = {
-                'occupancy': telemetry.get('passenger_count', 0),
-                'speed': telemetry.get('speed', 0),
-                'status': 'active',
+                'occupancy': telemetry.get('passenger_count', 5),
+                'speed': telemetry.get('speed', 100),
+                'status': telemetry.get('status', 'Idle'),
                 'location': {
-                    'lat': telemetry.get('latitude'),
-                    'lng': telemetry.get('longitude'),
-                    'latitude': telemetry.get('latitude'),
-                    'longitude': telemetry.get('longitude')
-                }
+                    'lat': telemetry.get('latitude', 6.917404),
+                    'lng': telemetry.get('longitude', 79.97367),
+                    'latitude': telemetry.get('latitude', 6.917404),
+                    'longitude': telemetry.get('longitude', 79.97367)
+                },
+                'capacity': telemetry.get('capacity', 40),
+                'currentStop': telemetry.get('currentStop', ""),
+                'currentTrip': telemetry.get('currentTrip', "9999"),
+                'latitude': telemetry.get('latitude', 6.925070248),
+                'longitude': telemetry.get('longitude', 79.97862329),
+                'safe_speed': telemetry.get('safe_speed', 40),
+                'road_condition': telemetry.get('road_condition', "Dry"),
+                'direction': telemetry.get('direction', "Kaduwela_to_Kollupitiya"),
+                'location_name': telemetry.get('location_name', "Unknown"),
+                'temperature': telemetry.get('temperature', 30),
+                'humidity': telemetry.get('humidity', 75),
             }
             if telemetry.get('route_id'):
                 payload['routeId'] = telemetry['route_id']
