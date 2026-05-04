@@ -19,7 +19,7 @@ import {
   getNextStopIndex,
 } from '../utils/tripTrackingUtils';
 import { 
-  getLastThreeRecordsOfTrip as getLastThreeRecordsFromService,
+  getLastFiveRecordsOfTrip as getLastFiveRecordsFromService,
   getDistanceKm as getDistanceKmService,
   predictSegmentETA 
 } from '../services/predictionService';
@@ -514,7 +514,7 @@ const CurrentTripScreen = ({ route }) => {
         // First, try to determine current stop from the last trip record
         if (bus && bus.currentTrip) {
             try {
-                const records = await getLastThreeRecordsFromService(bus.currentTrip);
+                const records = await getLastFiveRecordsFromService(bus.currentTrip);
                 if (records && records.length > 0) {
                     const lastVisitedStopName = records[0].Origin;
                     const lastVisitedStopIndex = stops.findIndex(s => s.stopName === lastVisitedStopName);
@@ -618,8 +618,8 @@ const CurrentTripScreen = ({ route }) => {
         // --- Passenger Flow Prediction ---
         if (bus && bus.currentTrip) {
           try {
-            // Get the last 3 records for the current trip
-            let records = await getLastThreeRecordsFromService(bus.currentTrip);
+            // Get the last 5 records for the current trip
+            let records = await getLastFiveRecordsFromService(bus.currentTrip);
             let sequence = [];
             const paddingRecord = {
               "month": 0, "day": 0, "Distance_km": 0, "hour": 0, "minute": 0,
@@ -628,8 +628,8 @@ const CurrentTripScreen = ({ route }) => {
             };
 
             // Prepare initial sequence (pad if needed)
-            if (records.length < 3) {
-              for (let i = 0; i < 3 - records.length; i++) {
+            if (records.length < 5) {
+              for (let i = 0; i < 5 - records.length; i++) {
                 sequence.push({ ...paddingRecord });
               }
               records.forEach(rec => {

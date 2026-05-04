@@ -11,7 +11,7 @@ import MapViewComponent from '../components/MapViewComponent';
 import { BACKEND_URL } from '../config';
 import { useSession } from '../context/SessionContext';
 import { updateLastActivity } from '../utils/authUtils';
-import { calculateBusPredictions, getLastThreeRecordsOfTrip, getDistanceKm } from '../services/predictionService';
+import { calculateBusPredictions, getLastFiveRecordsOfTrip , getDistanceKm } from '../services/predictionService';
 
 const socket = io(BACKEND_URL);
 const REALTIME_STALE_GUARD_MS = 15000;

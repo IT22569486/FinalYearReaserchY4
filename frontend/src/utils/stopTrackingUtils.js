@@ -1,4 +1,4 @@
-import { getLastThreeRecordsOfTrip, getDistanceKm } from '../services/predictionService';
+import { getLastFiveRecordsOfTrip, getDistanceKm } from '../services/predictionService';
 
 /**
  * Find the closest stop index to a given location using GPS
@@ -38,7 +38,7 @@ export const getCurrentStopIndex = async (bus, stops, tripId, busTrips = []) => 
 
   // Try to determine current stop from trip records (more accurate)
   try {
-    const records = await getLastThreeRecordsOfTrip(tripId);
+    const records = await getLastFiveRecordsOfTrip(tripId);
     console.log(`JASMLK--------------------------------A1 Fetched trip records for bus ${bus.busId}:`, records);
 
     if (records && records.length > 0) {

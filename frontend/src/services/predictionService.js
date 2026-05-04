@@ -8,7 +8,7 @@ export const getLastFiveRecordsOfTrip = async (tripId) => {
     const response = await apiClient.get(`/api/bus-trip-records/trip/${tripId}/last-five`);
     return response.data;
   } catch (error) {
-    console.error('Error getting last three records of trip:', error);
+    console.error('Error getting last five records of trip:', error);
     return [];
   }
 };
@@ -150,7 +150,7 @@ const prepareSequenceFromRecords = (records, direction, routeName) => {
  */
 export const predictPassengerFlow = async (tripId, remainingStops, direction, routeName, currentOccupancy) => {
   try {
-    const records = await getLastThreeRecordsOfTrip(tripId);
+    const records = await getLastFiveRecordsOfTrip(tripId);
     let sequence = prepareSequenceFromRecords(records, direction, routeName);
 
     // Predict passenger flow for each remaining segment
