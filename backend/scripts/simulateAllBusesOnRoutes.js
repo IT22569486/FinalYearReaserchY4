@@ -244,9 +244,12 @@ const emitLocation = (payload) => {
   socket.emit('busLocationUpdate', payload);
 };
 
-const buildLocationPayload = ({ busId, routeId, currentStop, nextStop, location, segmentIndex, totalSegments, traveled, segmentTotal }) => ({
+const buildLocationPayload = ({ busId, routeId, direction, fromStop, toStop, currentStop, nextStop, location, segmentIndex, totalSegments, traveled, segmentTotal }) => ({
   busId,
   routeId,
+  direction,
+  from: fromStop,
+  to: toStop,
   status: 'in_transit',
   timestamp: new Date(),
   currentStop,
@@ -270,6 +273,9 @@ const simulateSingleBus = async (bus, routeData, direction) => {
   const busId = bus.busId || bus.vehicle_id || bus.id;
   const basePath = routeData.path;
   const routePath = direction === 'reverse' ? [...basePath].reverse() : [...basePath];
+  const directionCode = direction === 'reverse' ? 1 : 0;
+  const fromStop = routePath[0]?.stopName || '';
+  const toStop = routePath[routePath.length - 1]?.stopName || '';
 
   if (routePath.length < 2) {
     console.log(`[SKIP] ${busId} route ${routeData.routeId} has less than 2 valid points.`);
@@ -288,7 +294,7 @@ const simulateSingleBus = async (bus, routeData, direction) => {
       driverId: bus.driverId || 'simulator',
       startTime: tripStartTime,
       status: 'active',
-      direction: direction === 'reverse' ? 1 : 0,
+      direction: directionCode,
     };
     const createdTrip = await busTripService.createTrip(tripData);
     tripId = createdTrip.tripId;
@@ -297,6 +303,10 @@ const simulateSingleBus = async (bus, routeData, direction) => {
       status: 'in_transit',
       currentTrip: tripId,
       currentStop: routePath[0].stopName,
+      nextStop: routePath[1]?.stopName || null,
+      direction: directionCode,
+      from: fromStop,
+      to: toStop,
       occupancy,
       routeId: routeData.routeId,
     });
@@ -319,6 +329,9 @@ const simulateSingleBus = async (bus, routeData, direction) => {
           buildLocationPayload({
             busId,
             routeId: routeData.routeId,
+            direction: directionCode,
+            fromStop,
+            toStop,
             currentStop: current.stopName,
             nextStop: next.stopName,
             location: point,
@@ -366,6 +379,10 @@ const simulateSingleBus = async (bus, routeData, direction) => {
 
       await busService.updateBus(busId, {
         currentStop: next.stopName,
+        nextStop: routePath[segmentIndex + 2]?.stopName || null,
+        direction: directionCode,
+        from: fromStop,
+        to: toStop,
         occupancy,
         status: 'in_transit',
         location: {

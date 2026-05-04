@@ -4,7 +4,7 @@
  * 
  * Usage:
  * node simulateBusMovement.js --busId BUS001 --routeId route123 --speed 50
- * 
+ * node testSEmulate.js --busId ZuV0TpySemgyky0JS6Bt --routeId C3bFJjjZI2MFc7ZFpX5b --speed 100
  * Options:
  * --busId: Bus ID to simulate (required)
  * --routeId: Route ID (required)
