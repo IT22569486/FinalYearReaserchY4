@@ -29,7 +29,7 @@ const char* ssid = "SLT-4G_BD8DB";
 const char* password = "prolink12345";
 
 // MQTT Broker IP (your PC running the Node.js backend)
-const char* mqtt_server = "192.168.1.14";
+const char* mqtt_server = "192.168.1.15";
 const int mqtt_port = 1883;
 
 // Bus Configuration (stored in flash)

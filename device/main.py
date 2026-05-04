@@ -274,7 +274,8 @@ def run_single_component(component_name, use_mqtt=True):
             update_component_status(component['name'], 'stopped')
             process.terminate()
         finally:
-            shutdown_backend()
+            if use_mqtt:
+                shutdown_backend()
 
 
 def run_all_components(use_mqtt=True):
@@ -345,7 +346,8 @@ def run_all_components(use_mqtt=True):
         print(" All components stopped\n")
     
     finally:
-        shutdown_backend()
+        if use_mqtt:
+            shutdown_backend()
 
 
 def shutdown_backend():
@@ -390,13 +392,21 @@ def interactive_menu(use_mqtt=True):
             print("[5] Exit")
             print()
             
-            choice = input("Select option: ").strip()
+            try:
+                choice = input("Select option: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nExiting...")
+                break
             
             if choice == '1':
                 run_all_components(use_mqtt=False)  # Already connected
             elif choice == '2':
                 list_components()
-                comp_name = input("\nEnter component name or folder: ").strip()
+                try:
+                    comp_name = input("\nEnter component name or folder: ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print("\nReturning to menu...")
+                    continue
                 if comp_name:
                     run_single_component(comp_name, use_mqtt=False)  # Already connected
             elif choice == '3':
@@ -469,4 +479,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nProgram terminated.")
+        sys.exit(0)
