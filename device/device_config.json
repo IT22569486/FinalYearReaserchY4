@@ -34,7 +34,7 @@
       "enable_adaptive_processing": true,
       "enable_video_enhancement": false,
       "show_gui": true,
-      "video_source": "C:/Users/sanda/Downloads/Driving Video.mp4",
+      "video_source": 1,
       "yolo_imgsz": 640,
       "depth_input_size": [256, 256],
       "video_enhancement": {

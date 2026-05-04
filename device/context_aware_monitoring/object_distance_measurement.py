@@ -1005,6 +1005,51 @@ def main():
                 # Draw behavior overlay
                 annotated = behavior_analyzer.draw_overlay(annotated, lane_polygon)
             
+            # PUBLISH CONTEXT-AWARE TELEMETRY TO MQTT
+            current_time = time.time()
+            if health_monitor and (current_time - getattr(main, 'last_context_telemetry_time', 0) >= 1.0):
+                overall_prox = "Clear"
+                warning_state = "CLEAR"
+                
+                if detected_objects:
+                    prox_levels = {"Very Close": 5, "Close": 4, "Near": 3, "Medium": 2, "Far": 1, "Clear": 0}
+                    max_level = 0
+                    for obj in detected_objects:
+                        p = obj.get('proximity', 'Clear')
+                        if prox_levels.get(p, 0) > max_level:
+                            max_level = prox_levels.get(p, 0)
+                            overall_prox = p
+                
+                if lane_warning or wrong_side_warning_active:
+                    warning_state = "DANGER"
+                elif overall_prox in ["Very Close", "Close"]:
+                    warning_state = "CLOSE"
+                
+                violation_msg = ""
+                try:
+                    if violation and message:
+                        violation_msg = message
+                except NameError:
+                    pass
+                    
+                if lane_warning:
+                    violation_msg = "Lane Departure"
+                elif wrong_side_warning_active:
+                    violation_msg = "Wrong Side"
+                    
+                context_payload = {
+                    "warning": warning_state,
+                    "proximity": overall_prox,
+                    "lane_warning": lane_warning,
+                    "wrong_side": wrong_side_warning_active,
+                    "violation_msg": violation_msg,
+                    "in_lane_count": in_lane_count if 'in_lane_count' in locals() else 0
+                }
+                
+                topic = f"bus/{health_monitor.bus_number}/context-aware"
+                health_monitor.publish_message(topic, context_payload)
+                main.last_context_telemetry_time = current_time
+            
             if depth_colored is not None:
                 cv2.putText(depth_colored, "DEPTH MAP", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)

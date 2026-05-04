@@ -162,6 +162,8 @@ String camWarning = "CLEAR";
 String camProximity = "Clear";
 bool camLaneWarning = false;
 bool camWrongSide = false;
+String camViolationMsg = "";
+int camInLaneCount = 0;
 
 //////////////////////////////////////
 // DRIVER MONITOR PREDICTIONS (from Pi)
@@ -350,6 +352,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (doc.containsKey("wrong_side")) {
       camWrongSide = doc["wrong_side"].as<bool>();
     }
+    if (doc.containsKey("violation_msg")) {
+      camViolationMsg = doc["violation_msg"].as<String>();
+    }
+    if (doc.containsKey("in_lane_count")) {
+      camInLaneCount = doc["in_lane_count"].as<int>();
+    }
     Serial.print(">>> CAM: ");
     Serial.print(camWarning);
     Serial.print(" | Proximity: ");
@@ -536,7 +544,7 @@ void updateDisplay() {
   tft.setCursor(5, 143);
   if (camWarning == "CLEAR") {
     tft.setTextColor(ILI9341_GREEN);
-  } else if (camWarning == "OBJ CLOSE") {
+  } else if (camWarning == "CLOSE") {
     tft.setTextColor(ILI9341_YELLOW);
   } else {
     tft.setTextColor(ILI9341_RED);
@@ -547,7 +555,7 @@ void updateDisplay() {
   tft.setTextSize(1);
   tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(5, 165);
-  tft.print("Obj: ");
+  tft.print("OBJECT: ");
   if (camProximity == "Very Close" || camProximity == "Close") {
     tft.setTextColor(ILI9341_RED);
   } else if (camProximity == "Near") {
@@ -568,6 +576,13 @@ void updateDisplay() {
     tft.setCursor(5, 190);
     tft.print("WRONG SIDE!");
   }
+
+  // In-lane object count
+  tft.setCursor(5, 205);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.print("In Lane: ");
+  tft.setTextColor(ILI9341_CYAN);
+  tft.print(camInLaneCount);
 
   // Divider between panels
   tft.drawLine(160, 125, 160, 240, ILI9341_DARKGREY);
