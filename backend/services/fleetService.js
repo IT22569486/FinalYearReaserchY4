@@ -33,7 +33,7 @@ function normalizeBus(id, data, source = 'buses') {
         safe_speed: data.safe_speed || data.speed || 0,
         speed: data.speed || data.safe_speed || 0,
         road_condition: data.road_condition || 'Dry',
-        passenger_count: data.passenger_count || data.occupancy || 0,
+        passenger_count: data.passenger_count || data.total_passenger_count || data.occupancy || 0,
         passenger_load_kg: data.passenger_load_kg || data.total_weight || 0,
         temperature: data.temperature || 0,
         humidity: data.humidity || 0,
@@ -72,6 +72,7 @@ async function getMergedBuses() {
             if (data.longitude) existing.longitude = data.longitude;
             if (data.speed) { existing.speed = data.speed; existing.safe_speed = existing.safe_speed || data.speed; }
             if (data.passenger_count != null) existing.passenger_count = data.passenger_count;
+            if (data.total_passenger_count != null) existing.passenger_count = data.total_passenger_count;
             if (data.total_weight) existing.passenger_load_kg = data.total_weight;
             if (data.status === 'online') existing.status = 'online';
             if (data.last_updated) existing.last_update = typeof data.last_updated?.toDate === 'function'
@@ -297,7 +298,7 @@ async function getMapData() {
             safe_speed: bus.safe_speed,
             speed: bus.speed,
             road_condition: bus.road_condition,
-            direction: bus.direction,
+            direction: typeof bus.direction === 'string' ? bus.direction : '',
             passenger_count: bus.passenger_count,
             route_id: bus.route_id,
             route_name: bus.route_name || '',

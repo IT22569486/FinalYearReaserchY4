@@ -94,7 +94,7 @@ function BusList() {
                     <td>{bus.route_id}</td>
                     <td>{bus.location_name || 'Unknown'}</td>
                     <td style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                      {bus.direction?.replace(/_/g, ' → ') || '-'}
+                      {typeof bus.direction === 'string' ? bus.direction.replace(/_/g, ' → ') : '-'}
                     </td>
                     <td>
                       <div className="speed-display">

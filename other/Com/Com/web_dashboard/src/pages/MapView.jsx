@@ -246,14 +246,14 @@ function MapView() {
                         </div>
                       </div>
                       
-                      <div style={{ 
+                      <div style={{
                         marginTop: '0.75rem',
                         paddingTop: '0.75rem',
                         borderTop: '1px solid rgba(255,255,255,0.1)',
                         fontSize: '0.75rem',
                         color: '#9ca3af'
                       }}>
-                        {bus.direction?.replace(/_/g, ' → ')}
+                        {bus.direction && typeof bus.direction === 'string' && bus.direction.replace(/_/g, ' → ')}
                       </div>
                     </div>
                   </Popup>
